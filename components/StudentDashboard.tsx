@@ -474,6 +474,24 @@ export const StudentDashboard: React.FC<Props> = ({
     return getFeatureAccess(featureId).hasAccess;
   };
 
+  // ── BASIC USER: HTML Write-Mode Daily Quota ──────────────────────────────
+  const _isUltraUser   = user.isPremium && user.subscriptionLevel === 'ULTRA';
+  const _isBasicUser   = user.isPremium && user.subscriptionLevel === 'BASIC';
+  const _todayKey      = new Date().toISOString().split('T')[0];
+  const _basicHtmlKey  = `nst_basic_html_${user.id}_${_todayKey}`;
+  const BASIC_HTML_DAILY_LIMIT = settings?.basicHtmlDailyLimit ?? 3;
+  const _basicHtmlUsed = _isBasicUser
+    ? parseInt(localStorage.getItem(_basicHtmlKey) || '0', 10)
+    : 0;
+  const basicHtmlRemaining = Math.max(0, BASIC_HTML_DAILY_LIMIT - _basicHtmlUsed);
+  // canViewHtmlFree: Ultra always, Basic if still has free sessions today
+  const _canViewHtmlFree = _isUltraUser || (_isBasicUser && basicHtmlRemaining > 0);
+  // Called whenever a Basic user opens HTML view to consume one daily session
+  const _trackBasicHtmlOpen = () => {
+    if (!_isBasicUser) return;
+    localStorage.setItem(_basicHtmlKey, String(_basicHtmlUsed + 1));
+  };
+
   // === DISCOUNT EVENT LIVE / COOLDOWN STATE ===
   // Discount sirf "active window" (startsAt → endsAt) ke beech hi LIVE manaa
   // jayega. Cooldown phase (endsAt → resetAt) me prices wapas normal ho jate
@@ -599,6 +617,98 @@ export const StudentDashboard: React.FC<Props> = ({
     }
   }, [user.isPremium, user.subscriptionEndDate]);
 
+  // --- STORE VISIT → MAILBOX DISCOUNT DELIVERY (multi-tier escalation) ---
+  // 1st visit  →  10% (storeVisitDiscountPercent, default 10)
+  // 3rd visit  →  15%
+  // 5th+ visit →  20% (max)
+  // NOTE: uses userRef.current (defined later in the component) to avoid stale closure
+  // overwriting inbox. Effect callbacks are closures that execute AFTER the full
+  // component function runs, so userRef is already initialized by then.
+  useEffect(() => {
+    if (activeTab !== 'STORE') return;
+    const freshUser = (window as any).__dashUserRef?.current ?? user;
+    const isSubscribed = freshUser.isPremium && freshUser.subscriptionEndDate && new Date(freshUser.subscriptionEndDate) > new Date();
+    if (isSubscribed) return;
+    if (!freshUser?.id) return;
+    const today = new Date().toISOString().split('T')[0];
+
+    // Increment visit count for today
+    const visitCountKey = `nst_store_visits_${freshUser.id}_${today}`;
+    const visitCount = parseInt(localStorage.getItem(visitCountKey) || '0', 10) + 1;
+    localStorage.setItem(visitCountKey, String(visitCount));
+
+    // Helper: send one discount mail if not already sent at this tier today
+    const sendDiscount = (pct: number, tier: string) => {
+      const sentKey = `nst_store_disc${tier}_${freshUser.id}_${today}`;
+      if (localStorage.getItem(sentKey)) return;
+      const msgId = `store-disc-${tier}-${today}`;
+      // Re-fetch freshest user to avoid inbox race
+      const latestUser = (window as any).__dashUserRef?.current ?? freshUser;
+      const alreadyHas = (latestUser.inbox || []).some((m: any) => m.id === msgId);
+      if (alreadyHas) return;
+      const code = 'DISC' + Math.random().toString(36).toUpperCase().slice(2, 9);
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const discMsg: any = {
+        id: msgId,
+        text: `🎁 Special Discount!\n\n⬆️ Upgrade your plan to unlock full power!\n\n🏷️ You got ${pct}% off — redeem now!`,
+        date: new Date().toISOString(),
+        read: false,
+        type: 'REDEEM_CODE',
+        redeemCode: code,
+        expiresAt,
+      };
+      const updatedInbox = [discMsg, ...(latestUser.inbox || [])];
+      handleUserUpdate({ ...latestUser, inbox: updatedInbox });
+      localStorage.setItem(sentKey, '1');
+    };
+
+    if (visitCount === 1) sendDiscount(settings?.storeVisitDiscountPercent ?? 10, '1');
+    if (visitCount === 3) sendDiscount(15, '3');
+    if (visitCount >= 5) sendDiscount(20, '5');
+  }, [activeTab, user?.id]);
+
+  // --- MCQ DAILY TRACKING HELPER ---
+  // Uses userRef.current (via __dashUserRef) to prevent stale closure overwriting inbox
+  const trackDailyMcqAnswer = (isCorrect: boolean) => {
+    try {
+      const freshUser = (window as any).__dashUserRef?.current ?? user;
+      const today = new Date().toISOString().split('T')[0];
+      const countKey = `nst_mcq_daily_total_${today}_${freshUser.id}`;
+      const correctKey = `nst_mcq_daily_correct_${today}_${freshUser.id}`;
+      const total = (parseInt(localStorage.getItem(countKey) || '0')) + 1;
+      const correct = (parseInt(localStorage.getItem(correctKey) || '0')) + (isCorrect ? 1 : 0);
+      localStorage.setItem(countKey, total.toString());
+      localStorage.setItem(correctKey, correct.toString());
+      // Check if prize should be triggered
+      const minMcq = settings?.mcqDailyMinimum ?? 50;
+      const mcqRules = (settings?.mcqRewardRules || []).filter((r: any) => r.enabled);
+      if (total < minMcq || mcqRules.length === 0) return;
+      const rewardKey = `nst_mcq_prize_triggered_${today}_${freshUser.id}`;
+      if (localStorage.getItem(rewardKey)) return;
+      const pct = total > 0 ? (correct / total) * 100 : 0;
+      const applicableRule = mcqRules
+        .filter((r: any) => pct >= r.minPercentage)
+        .sort((a: any, b: any) => b.minPercentage - a.minPercentage)[0];
+      if (!applicableRule) return;
+      localStorage.setItem(rewardKey, '1');
+      const expiryHours = settings?.rewardExpiryHours ?? 12;
+      const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000).toISOString();
+      const rewardMsg: any = {
+        id: `mcq-prize-${Date.now()}`,
+        text: `🎯 MCQ Prize! Aaj ${total} MCQs solve kiye aur ${pct.toFixed(0)}% score kiya!\n\n${applicableRule.label}`,
+        date: new Date().toISOString(),
+        read: false,
+        type: 'REWARD',
+        expiresAt,
+        reward: applicableRule.rewardType === 'COINS'
+          ? { type: 'COINS', amount: applicableRule.rewardAmount }
+          : { type: 'SUBSCRIPTION', subTier: applicableRule.rewardSubTier, subLevel: applicableRule.rewardSubLevel, durationHours: applicableRule.rewardDurationHours },
+      };
+      handleUserUpdate({ ...freshUser, inbox: [rewardMsg, ...(freshUser.inbox || [])] });
+      showAlert(`🎯 MCQ Prize! ${applicableRule.label}`, 'SUCCESS', 'Daily MCQ Reward!');
+    } catch (err) { console.warn('MCQ tracking failed:', err); }
+  };
+
   // --- BROADCAST REDEEM CODE DELIVERY ---
   useEffect(() => {
     if (!settings?.broadcastRedeemCodes?.length || !user?.id) return;
@@ -637,10 +747,11 @@ export const StudentDashboard: React.FC<Props> = ({
 
       const inboxMsg: any = {
         id: `bc-${bc.id}`,
-        text: `${bc.title || '🎁 Admin ka Special Gift!'}\n\n${bc.message}\n\n📋 Redeem Code: ${bc.code}\n\n✅ Kaise Use Karein:\n1. Neeche "Redeem" tab pe jao\n2. Yeh code enter karo: ${bc.code}\n3. Apply karo aur gift paao!\n\n🎁 Reward: ${typeLabel}`,
+        text: `${bc.title || '🎁 Admin ka Special Gift!'}\n\n${bc.message}\n\n🎁 Reward: ${typeLabel}`,
         date: new Date().toISOString(),
         read: false,
-        type: 'TEXT',
+        type: 'REDEEM_CODE',
+        redeemCode: bc.code,
         expiresAt,
       };
       updatedInbox = [inboxMsg, ...updatedInbox];
@@ -1113,6 +1224,10 @@ export const StudentDashboard: React.FC<Props> = ({
   const [storeSubTab, setStoreSubTab] = useState<'STORE' | 'EARN'>('STORE');
   const [inboxTab, setInboxTab] = useState<'MESSAGES' | 'UPDATES' | 'REWARDS'>('MESSAGES');
   const [rewardSubTab, setRewardSubTab] = useState<'EARNED' | 'RULES' | 'HISTORY'>('EARNED');
+  const [rewardHistorySeenCount, setRewardHistorySeenCount] = useState<number>(() => {
+    const saved = localStorage.getItem(`nst_reward_hist_seen_${user?.id || ''}`);
+    return saved ? parseInt(saved, 10) : 0;
+  });
   const [nowTick, setNowTick] = useState(Date.now());
   const [isDocFullscreen, setIsDocFullscreen] = useState(false);
   const rotateFullscreenRef = useRef(false);
@@ -3099,6 +3214,9 @@ export const StudentDashboard: React.FC<Props> = ({
   const userRef = React.useRef(user);
   useEffect(() => {
     userRef.current = user;
+    // Expose ref globally so early-declared effects (store discount, MCQ tracker)
+    // can read the freshest user without stale-closure issues.
+    (window as any).__dashUserRef = userRef;
   }, [user]);
 
   useEffect(() => {
@@ -3284,7 +3402,18 @@ export const StudentDashboard: React.FC<Props> = ({
   }, [dailyStudySeconds, user.id, user.createdAt, user.subscriptionTier]);
 
   const [showInbox, setShowInbox] = useState(false);
-  const unreadCount = user.inbox?.filter((m) => !m.read).length || 0;
+  const EXPIRY_SOON_MS = 2 * 60 * 60 * 1000; // 2 hours — re-notify when reward is this close to expiry
+  const unreadCount = (user.inbox || []).filter((m) => {
+    if (m.isClaimed) return false;
+    const now = Date.now();
+    const expired = m.expiresAt && new Date(m.expiresAt).getTime() <= now;
+    if (expired) return false;
+    if (!m.read) return true; // normal unread
+    // Expiry-soon re-notification: show dot again when within 2h of expiry and not yet seen as expiring-soon
+    const expiringSoon = m.expiresAt && (new Date(m.expiresAt).getTime() - now) < EXPIRY_SOON_MS;
+    if (expiringSoon && !(m as any).expirySoonRead) return true;
+    return false;
+  }).length;
 
   useEffect(() => {
     setCanClaimReward(
@@ -3473,10 +3602,36 @@ export const StudentDashboard: React.FC<Props> = ({
   };
 
   const markInboxRead = () => {
-    if (!user.inbox) return;
-    const updatedInbox = user.inbox.map((m) => ({ ...m, read: true }));
-    handleUserUpdate({ ...user, inbox: updatedInbox });
+    const freshUser = (window as any).__dashUserRef?.current ?? user;
+    if (!freshUser.inbox) return;
+    const updatedInbox = freshUser.inbox.map((m: any) => ({ ...m, read: true, expirySoonRead: true }));
+    handleUserUpdate({ ...freshUser, inbox: updatedInbox });
   };
+
+  // Auto-mark all inbox messages as read (and expirySoonRead) when inbox is opened
+  useEffect(() => {
+    if (!showInbox) return;
+    const freshUser = (window as any).__dashUserRef?.current ?? user;
+    if (!freshUser.inbox || freshUser.inbox.length === 0) return;
+    const hasUnread = freshUser.inbox.some((m: any) => {
+      if (m.isClaimed) return false;
+      const now = Date.now();
+      const expired = m.expiresAt && new Date(m.expiresAt).getTime() <= now;
+      if (expired) return false;
+      if (!m.read) return true;
+      const expiringSoon = m.expiresAt && (new Date(m.expiresAt).getTime() - now) < EXPIRY_SOON_MS;
+      if (expiringSoon && !m.expirySoonRead) return true;
+      return false;
+    });
+    if (!hasUnread) return;
+    const updatedInbox = freshUser.inbox.map((m: any) => {
+      const now = Date.now();
+      const expiringSoon = m.expiresAt && (new Date(m.expiresAt).getTime() - now) < EXPIRY_SOON_MS;
+      return { ...m, read: true, ...(expiringSoon ? { expirySoonRead: true } : {}) };
+    });
+    handleUserUpdate({ ...freshUser, inbox: updatedInbox });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showInbox]);
 
   // Built-in subjects whose homework lives behind the "Subject view" (vs. dated history).
   const HOMEWORK_SUBJECTS_BASE = ['mcq', 'sarSangrah', 'speedySocialScience', 'speedyScience'];
@@ -3493,12 +3648,15 @@ export const StudentDashboard: React.FC<Props> = ({
   const _autoOpenFirstBookNote = (subId: string) => {
     const pageWise = new Set(['sarSangrah', 'speedySocialScience', 'speedyScience',
       ...((settings as any)?.customBooks || []).map((b: any) => b.id)]);
-    if (!pageWise.has(subId)) { setHwActiveHwId(null); return; }
-    const allHw: any[] = (settings?.homework || []);
-    const first = allHw
-      .filter(h => h.targetSubject === subId)
-      .sort((a, b) => (parseInt(String(a.pageNo ?? ''), 10) || 99999) - (parseInt(String(b.pageNo ?? ''), 10) || 99999))[0];
-    setHwActiveHwId(first?.id ?? null);
+    // For page-wise subjects (Sar Sangrah, Speedy, custom books): show the page
+    // list first — never auto-open Page 1. Same pattern as Lucent books.
+    if (pageWise.has(subId)) {
+      setHwActiveHwId(null);
+      setHwOpenedDirect(false);
+      return;
+    }
+    // For non-page-wise subjects (MCQ etc.) just clear the active ID.
+    setHwActiveHwId(null);
     setHwOpenedDirect(false);
   };
 
@@ -3516,7 +3674,7 @@ export const StudentDashboard: React.FC<Props> = ({
     }
     if (subject.id === 'lucent') {
       setLucentCategoryView(true);
-      setSelectedLucentBook('Lucent');
+      setSelectedLucentBook(null);
       return;
     }
     setContentViewStep("CHAPTERS");
@@ -4152,6 +4310,11 @@ export const StudentDashboard: React.FC<Props> = ({
                       /* ── Read Mode: ChunkedNotesReader TTS ── */
                       <ChunkedNotesReader
                         key={`hw-reader-${activeHw.id}-chunk`}
+                        isUltraUser={_canViewHtmlFree}
+                        userCredits={user.credits || 0}
+                        htmlUnlockCost={settings?.htmlUnlockCost ?? 5}
+                        onHtmlOpen={_trackBasicHtmlOpen}
+                        onSpendCredits={(amt) => handleUserUpdate({ ...user, credits: Math.max(0, (user.credits || 0) - amt) })}
                         htmlContent={(() => {
                           const chunkSrc = (activeHw as any).chunkNotes;
                           const htmlSrc = (activeHw as any).htmlNotes;
@@ -5052,8 +5215,7 @@ export const StudentDashboard: React.FC<Props> = ({
         return m === Infinity ? 99999 : m;
       };
       // All COMPETITION-level admin notes
-      const competitionNotes = ((settings?.lucentNotes || []) as LucentNoteEntry[])
-        .filter(n => !n.classLevel || n.classLevel === 'COMPETITION');
+      const competitionNotes = (settings?.lucentNotes || []) as LucentNoteEntry[];
       // Unique book names — entries with no bookName fall under 'Lucent'
       const uniqueBooks: string[] = Array.from(
         new Set(competitionNotes.map(n => (n.bookName?.trim()) || 'Lucent'))
@@ -6969,7 +7131,7 @@ export const StudentDashboard: React.FC<Props> = ({
                 }
                 if (subject.id === 'lucent') {
                   setLucentCategoryView(true);
-                  setSelectedLucentBook('Lucent');
+                  setSelectedLucentBook(null);
                   return;
                 }
                 setContentViewStep("CHAPTERS");
@@ -7108,7 +7270,9 @@ export const StudentDashboard: React.FC<Props> = ({
             <div className="px-0 pb-6">
               <div className="flex items-center gap-2 px-4 mb-3 mt-2">
                 <span className="inline-block h-2.5 w-2.5 rounded-full bg-gradient-to-r from-amber-400 to-orange-500" />
-                <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Earn Coins — Spin the Wheel</h3>
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">
+                  {(settings?.spinGameTypes?.length || 0) > 1 ? 'Earn Coins — Games' : 'Earn Coins — Spin the Wheel'}
+                </h3>
               </div>
               {isGameEnabled ? (
                 user.isGameBanned ? (
@@ -7443,6 +7607,82 @@ export const StudentDashboard: React.FC<Props> = ({
                   )}
               </div>
             </div>
+
+            {/* FEATURE LIMITS CARD */}
+            {(() => {
+              const isUltra = user.isPremium && user.subscriptionLevel === 'ULTRA';
+              const isBasic = user.isPremium && user.subscriptionLevel === 'BASIC';
+              const htmlCost = settings?.htmlUnlockCost ?? 5;
+              const basicLimit = settings?.basicHtmlDailyLimit ?? 3;
+              const todayStr = new Date().toISOString().split('T')[0];
+              const basicUsed = isBasic
+                ? parseInt(localStorage.getItem(`nst_basic_html_${user.id}_${todayStr}`) || '0', 10)
+                : 0;
+              const basicLeft = Math.max(0, basicLimit - basicUsed);
+
+              type Row = { icon: string; label: string; value: string; pill: 'green' | 'blue' | 'red' | 'amber' };
+              const rows: Row[] = [
+                {
+                  icon: '📝',
+                  label: 'Notes / PDF / Video / Audio / MCQ',
+                  value: isUltra ? 'Unlimited' : 'Ultra only',
+                  pill: isUltra ? 'green' : 'red',
+                },
+                {
+                  icon: '✍️',
+                  label: 'Write Mode (HTML View)',
+                  value: isUltra
+                    ? 'Unlimited'
+                    : isBasic
+                      ? `${basicLeft} / ${basicLimit} free today`
+                      : `${htmlCost} CR per session`,
+                  pill: isUltra ? 'green' : isBasic ? (basicLeft > 0 ? 'blue' : 'amber') : 'amber',
+                },
+                {
+                  icon: '💰',
+                  label: 'Credits Balance',
+                  value: `${user.credits || 0} CR`,
+                  pill: (user.credits || 0) >= 20 ? 'green' : (user.credits || 0) > 0 ? 'amber' : 'red',
+                },
+              ];
+
+              const pillStyle: Record<Row['pill'], string> = {
+                green: 'bg-emerald-100 text-emerald-700',
+                blue:  'bg-sky-100 text-sky-700',
+                amber: 'bg-amber-100 text-amber-700',
+                red:   'bg-rose-100 text-rose-600',
+              };
+
+              return (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="px-4 pt-3 pb-1 flex items-center gap-2">
+                    <span className="text-base">🔑</span>
+                    <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Your Feature Limits</p>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {rows.map((r, i) => (
+                      <div key={i} className="px-4 py-3 flex items-center gap-3">
+                        <span className="text-lg shrink-0">{r.icon}</span>
+                        <p className="flex-1 text-[11px] font-bold text-slate-600 leading-tight">{r.label}</p>
+                        <span className={`shrink-0 text-[10px] font-black px-2 py-0.5 rounded-full ${pillStyle[r.pill]}`}>
+                          {r.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {!isUltra && (
+                    <div className="px-4 pb-3 pt-1">
+                      <button
+                        onClick={() => onTabChange('STORE')}
+                        className="w-full py-2 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white text-xs font-black active:scale-95 transition"
+                      >
+                        Upgrade to Ultra — Unlock Everything
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* ACTION LIST */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
@@ -8936,6 +9176,8 @@ export const StudentDashboard: React.FC<Props> = ({
                           onClick={() => {
                             const mcq = settings.globalChallengeMcq![0];
                             const isCorrect = i === mcq.correctAnswer;
+                            // Track daily MCQ for prize system
+                            trackDailyMcqAnswer(isCorrect);
                             // ── MY MISTAKE BANK ──────────────────────────
                             // Challenge of the Day auto-submits on tap (no
                             // Submit button) — user reported wrong answers
@@ -11732,6 +11974,11 @@ export const StudentDashboard: React.FC<Props> = ({
                         </button>
                         <ChunkedNotesReader
                           key={`lesson-compare-full-${lce.id}-chunk`}
+                          isUltraUser={_canViewHtmlFree}
+                          userCredits={user.credits || 0}
+                          htmlUnlockCost={settings?.htmlUnlockCost ?? 5}
+                          onHtmlOpen={_trackBasicHtmlOpen}
+                          onSpendCredits={(amt) => handleUserUpdate({ ...user, credits: Math.max(0, (user.credits || 0) - amt) })}
                           content={fullLessonText}
                           topBarLabel={lce.lessonTitle}
                           hideTopBar={isLandscapeUiHidden}
@@ -12839,7 +13086,7 @@ export const StudentDashboard: React.FC<Props> = ({
                     <div key={msg.id || idx} className={`p-4 rounded-2xl border transition-all ${isExpired ? 'bg-slate-50 border-slate-200 opacity-60' : msg.read ? 'bg-white border-slate-200' : 'bg-indigo-50 border-indigo-200 shadow-sm'}`}>
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex items-center gap-2">
-                          {msg.type === 'GIFT' ? <Gift size={15} className="text-pink-500" /> : msg.type === 'REWARD' ? <Crown size={15} className="text-amber-500" /> : <MessageSquare size={15} className="text-blue-500" />}
+                          {msg.type === 'GIFT' ? <Gift size={15} className="text-pink-500" /> : msg.type === 'REWARD' ? <Crown size={15} className="text-amber-500" /> : msg.type === 'REDEEM_CODE' ? <Gift size={15} className="text-indigo-500" /> : <MessageSquare size={15} className="text-blue-500" />}
                           <span className="text-[10px] font-bold text-slate-400">{new Date(msg.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
                           {isExpired && <span className="text-[9px] font-black text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">EXPIRED</span>}
                           {!isExpired && daysLeft !== null && daysLeft <= 7 && !msg.isClaimed && (
@@ -12850,16 +13097,53 @@ export const StudentDashboard: React.FC<Props> = ({
                         </div>
                         {!msg.read && <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse shrink-0"></span>}
                       </div>
-                      <p className="text-sm font-medium text-slate-800 leading-relaxed mb-3">{msg.text}</p>
+                      <p className="text-sm font-medium text-slate-800 leading-relaxed mb-3 whitespace-pre-line">{msg.text}</p>
+                      {msg.type === 'REDEEM_CODE' && msg.redeemCode && !isExpired && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 bg-slate-100 rounded-xl px-3 py-2">
+                            <span className="flex-1 font-mono font-black text-sm text-slate-800 tracking-wider">{msg.redeemCode}</span>
+                            <button
+                              onClick={() => {
+                                try { navigator.clipboard.writeText(msg.redeemCode); } catch {}
+                              }}
+                              className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg active:scale-95 transition-all"
+                            >
+                              Copy
+                            </button>
+                          </div>
+                          <button
+                            onClick={() => {
+                              try { navigator.clipboard.writeText(msg.redeemCode); } catch {}
+                              setShowInbox(false);
+                              setActiveTab('REDEEM');
+                            }}
+                            className="w-full py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-sm"
+                          >
+                            <Gift size={15} /> Code Copy Karke Redeem Karo
+                          </button>
+                          {msg.id?.startsWith('store-disc-') && (
+                            <button
+                              onClick={() => {
+                                setShowInbox(false);
+                                setShowRulesPage(true);
+                              }}
+                              className="w-full py-2.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-xl font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-sm"
+                            >
+                              <span>📋</span> Feature Rules Dekho — Free / Basic / Ultra
+                            </button>
+                          )}
+                        </div>
+                      )}
                       {msg.type === 'GIFT' && msg.gift && !msg.isClaimed && !isExpired && (
                         <button onClick={() => claimRewardMessage(msg.id, null, msg.gift)} className="w-full py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-sm">
                           <Gift size={15} /> Claim Gift
                           {msg.gift.type === 'CREDITS' && <span className="bg-white/20 px-2 py-0.5 rounded-full text-xs">+{msg.gift.value} CR</span>}
                         </button>
                       )}
-                      {msg.type === 'REWARD' && msg.reward && !msg.isClaimed && !isExpired && (
-                        <button onClick={() => claimRewardMessage(msg.id, msg.reward, undefined)} className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-sm">
+                      {msg.type === 'REWARD' && (msg.reward || msg.gift) && !msg.isClaimed && !isExpired && (
+                        <button onClick={() => claimRewardMessage(msg.id, msg.reward || null, msg.reward ? undefined : msg.gift)} className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-sm">
                           <Crown size={15} /> Claim Reward
+                          {!msg.reward && msg.gift?.type === 'CREDITS' && <span className="bg-white/20 px-2 py-0.5 rounded-full text-xs">+{msg.gift.value} CR</span>}
                         </button>
                       )}
                       {msg.isClaimed && (
@@ -12902,12 +13186,17 @@ export const StudentDashboard: React.FC<Props> = ({
                         📋 Rules
                       </button>
                       <button
-                        onClick={() => setRewardSubTab('HISTORY')}
+                        onClick={() => {
+                          setRewardSubTab('HISTORY');
+                          const newCount = claimedRewardMsgs.length;
+                          setRewardHistorySeenCount(newCount);
+                          localStorage.setItem(`nst_reward_hist_seen_${user?.id || ''}`, String(newCount));
+                        }}
                         className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-2xl text-[11px] font-black transition-all ${rewardSubTab === 'HISTORY' ? 'bg-violet-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                       >
                         📜 History
-                        {claimedRewardMsgs.length > 0 && (
-                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${rewardSubTab === 'HISTORY' ? 'bg-white/20 text-white' : 'bg-violet-500 text-white'}`}>{claimedRewardMsgs.length}</span>
+                        {claimedRewardMsgs.length > rewardHistorySeenCount && (
+                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${rewardSubTab === 'HISTORY' ? 'bg-white/20 text-white' : 'bg-violet-500 text-white'}`}>{claimedRewardMsgs.length - rewardHistorySeenCount}</span>
                         )}
                       </button>
                     </div>
@@ -13703,6 +13992,11 @@ export const StudentDashboard: React.FC<Props> = ({
                     /* ── Read Mode: ChunkedNotesReader TTS ── */
                   <ChunkedNotesReader
                     key={`lucent-reader-${entry.id}-${safeIndex}-${autoSyncOn ? 'auto' : 'manual'}-chunk`}
+                    isUltraUser={_canViewHtmlFree}
+                    userCredits={user.credits || 0}
+                    htmlUnlockCost={settings?.htmlUnlockCost ?? 5}
+                    onHtmlOpen={_trackBasicHtmlOpen}
+                    onSpendCredits={(amt) => handleUserUpdate({ ...user, credits: Math.max(0, (user.credits || 0) - amt) })}
                     htmlContent={(() => {
                       const chunkSrc = (currentPage as any).chunkNotes;
                       const htmlSrc = (currentPage as any).htmlNotes;
@@ -14548,6 +14842,8 @@ RULES:
                               if (!isInteractive) return;
                               if (userAnswered) return;
                               setPlayerMcqAnswers(prev => ({ ...prev, [idx]: oi }));
+                              // Track daily MCQ answer for prize system
+                              trackDailyMcqAnswer(isCorrect);
                             };
                             return (
                               <button

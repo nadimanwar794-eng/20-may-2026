@@ -687,6 +687,9 @@ export interface SystemSettings {
   signupBonus?: number;
   rewardExpiryHours?: number; // How long rewards stay claimable (default 12)
   mcqDailyMinimum?: number; // Min MCQs per day for reward (default 50)
+  storeVisitDiscountPercent?: number; // % discount sent to mailbox when non-subscriber visits Store (default 10)
+  htmlUnlockCost?: number; // Credits required for free/basic users to unlock HTML write view per session (default 5)
+  basicHtmlDailyLimit?: number; // Free HTML view sessions per day for Basic subscribers (default 3)
   mcqRewardRules?: MCQRewardRule[];
 
   // LEVEL SYSTEM (Admin Config)

@@ -5,22 +5,22 @@ interface Props {
   prevStreak: number;
   isNewRecord: boolean;
   onClose: () => void;
+  language?: string;
 }
 
-export const StreakLoginPopup: React.FC<Props> = ({ newStreak, prevStreak, isNewRecord, onClose }) => {
+export const StreakLoginPopup: React.FC<Props> = ({ newStreak, prevStreak, isNewRecord, onClose, language = 'Hindi' }) => {
   const [visible, setVisible] = useState(false);
   const [numVisible, setNumVisible] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const isHindi = language === 'Hindi';
   const isDecrement = newStreak < prevStreak && prevStreak > 1;
   const isFirstLogin = prevStreak === 0;
-  const isMilestone = [7, 14, 21, 30, 50, 100].includes(newStreak);
+  const isMilestone = [3, 7, 14, 21, 30, 50, 100].includes(newStreak);
 
   useEffect(() => {
-    // Entrance animation
     const t1 = setTimeout(() => setVisible(true), 50);
     const t2 = setTimeout(() => setNumVisible(true), 400);
-    // Auto close after 6s
     timerRef.current = setTimeout(() => handleClose(), 6500);
     return () => {
       clearTimeout(t1); clearTimeout(t2);
@@ -33,7 +33,6 @@ export const StreakLoginPopup: React.FC<Props> = ({ newStreak, prevStreak, isNew
     setTimeout(onClose, 350);
   };
 
-  // Dynamic fire config based on streak
   const streakDay = Math.min(newStreak, 7);
   const fireSizes   = [32, 44, 58, 72, 86, 100, 116, 132];
   const fireGlows   = [4,  10, 16, 22, 30,  38,  46,  56];
@@ -43,25 +42,52 @@ export const StreakLoginPopup: React.FC<Props> = ({ newStreak, prevStreak, isNew
     'rgba(249,115,22,0.75)', 'rgba(239,68,68,0.7)',
     'rgba(239,68,68,0.8)',   'rgba(239,68,68,0.9)',
   ];
-  const extra = newStreak > 7 ? Math.min((newStreak - 7) * 4, 28) : 0;
   const fireSize  = Math.min((fireSizes[streakDay] ?? 132) + (newStreak > 7 ? (newStreak - 7) * 4 : 0), 150);
   const fireGlow  = (fireGlows[streakDay] ?? 56) + (newStreak > 7 ? Math.min((newStreak - 7) * 3, 24) : 0);
   const fireColor = fireColors[streakDay] ?? fireColors[7];
 
-  const dayLabel =
-    newStreak === 0 ? 'Streak Lost' :
-    newStreak === 1 ? 'Day 1 — Shuru ho gaya! 🚀' :
-    newStreak === 2 ? 'Day 2 — Warm Up! 🔥' :
-    newStreak === 3 ? 'Day 3 — On Fire! 🔥🔥' :
-    newStreak === 4 ? 'Day 4 — Blazing! 🔥🔥🔥' :
-    newStreak === 5 ? 'Day 5 — Unstoppable! ⚡' :
-    newStreak === 6 ? 'Day 6 — Almost Legend! 💪' :
-    `Day ${newStreak} — Legend! 👑`;
+  const getDayLabel = () => {
+    if (isDecrement) return isHindi ? 'Streak Toot Gayi' : 'Streak Lost';
+    if (isHindi) {
+      if (newStreak === 1) return 'Pehla Din — Shuru ho gaya! 🚀';
+      if (newStreak === 2) return `Din ${newStreak} — Warm Up! 🔥`;
+      if (newStreak === 3) return `Din ${newStreak} — On Fire! 🔥🔥`;
+      if (newStreak === 4) return `Din ${newStreak} — Blazing! 🔥🔥🔥`;
+      if (newStreak === 5) return `Din ${newStreak} — Rokna Mushkil! ⚡`;
+      if (newStreak === 6) return `Din ${newStreak} — Lagbhag Legend! 💪`;
+      return `Din ${newStreak} — Legend! 👑`;
+    } else {
+      if (newStreak === 1) return 'Day 1 — Just Started! 🚀';
+      if (newStreak === 2) return `Day ${newStreak} — Warm Up! 🔥`;
+      if (newStreak === 3) return `Day ${newStreak} — On Fire! 🔥🔥`;
+      if (newStreak === 4) return `Day ${newStreak} — Blazing! 🔥🔥🔥`;
+      if (newStreak === 5) return `Day ${newStreak} — Unstoppable! ⚡`;
+      if (newStreak === 6) return `Day ${newStreak} — Almost Legend! 💪`;
+      return `Day ${newStreak} — Legend! 👑`;
+    }
+  };
 
-  const accent = isDecrement ? { from: '#7f1d1d', to: '#450a0a', border: '#ef4444', glow: 'rgba(239,68,68,0.35)', bar: 'rgba(239,68,68,0.8)' }
-    : isNewRecord ? { from: '#1c1400', to: '#0a0800', border: '#fbbf24', glow: 'rgba(251,191,36,0.4)', bar: 'rgba(251,191,36,0.9)' }
-    : isMilestone  ? { from: '#0f1a2e', to: '#06091a', border: '#818cf8', glow: 'rgba(129,140,248,0.35)', bar: 'rgba(129,140,248,0.8)' }
-    : { from: '#111827', to: '#070b14', border: '#374151', glow: 'rgba(251,191,36,0.15)', bar: 'rgba(251,191,36,0.6)' };
+  const accent = isDecrement
+    ? { from: '#7f1d1d', to: '#450a0a', border: '#ef4444', glow: 'rgba(239,68,68,0.35)', bar: 'rgba(239,68,68,0.8)' }
+    : isNewRecord
+      ? { from: '#1c1400', to: '#0a0800', border: '#fbbf24', glow: 'rgba(251,191,36,0.4)', bar: 'rgba(251,191,36,0.9)' }
+      : isMilestone
+        ? { from: '#0f1a2e', to: '#06091a', border: '#818cf8', glow: 'rgba(129,140,248,0.35)', bar: 'rgba(129,140,248,0.8)' }
+        : { from: '#111827', to: '#070b14', border: '#374151', glow: 'rgba(251,191,36,0.15)', bar: 'rgba(251,191,36,0.6)' };
+
+  const headerLabel = isDecrement
+    ? (isHindi ? '⚠️ Streak Toot Gayi' : '⚠️ Streak Lost')
+    : isNewRecord
+      ? (isHindi ? '🏆 Naya Record!' : '🏆 New Record!')
+      : isMilestone
+        ? (isHindi ? '🎖️ Milestone!' : '🎖️ Milestone!')
+        : (isHindi ? 'Login Streak' : 'Login Streak');
+
+  const btnLabel = isDecrement
+    ? (isHindi ? 'Aaj se dobara shuru karo 💪' : 'Start again today 💪')
+    : isNewRecord
+      ? (isHindi ? 'Zabardast! Jaari rakho 🏆' : 'Amazing! Keep going 🏆')
+      : (isHindi ? 'Padhna Jaari Rakho 🔥' : 'Continue Learning 🔥');
 
   return (
     <div
@@ -82,23 +108,17 @@ export const StreakLoginPopup: React.FC<Props> = ({ newStreak, prevStreak, isNew
         }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Top glow bar */}
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${accent.bar}, transparent)`, animation: 'topbar-glow-pulse 2.5s ease-in-out infinite' }} />
-        {/* Shimmer */}
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(105deg,transparent 30%,rgba(255,255,255,0.06) 50%,transparent 70%)', backgroundSize: '200% 100%', animation: 'shimmer-sweep 3s linear infinite', pointerEvents: 'none' }} />
 
         <div className="relative p-6">
-          {/* Close btn */}
           <button onClick={handleClose} className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-white/40 hover:text-white/80 text-xl transition-colors" style={{ background: 'rgba(255,255,255,0.06)' }}>×</button>
 
-          {/* Header label */}
           <p className="text-[10px] font-black uppercase tracking-[0.25em] mb-4" style={{ color: isDecrement ? '#fca5a5' : isNewRecord ? '#fde68a' : isMilestone ? '#a5b4fc' : '#fbbf24aa' }}>
-            {isDecrement ? '⚠️ Streak Lost' : isNewRecord ? '🏆 New Record!' : isMilestone ? '🎖️ Milestone!' : 'Login Streak'}
+            {headerLabel}
           </p>
 
-          {/* Main content row */}
           <div className="flex items-center gap-5">
-            {/* Fire */}
             <div className="shrink-0" style={{ width: 80, display: 'flex', justifyContent: 'center' }}>
               <span style={{
                 fontSize: Math.min(fireSize, 80),
@@ -109,9 +129,7 @@ export const StreakLoginPopup: React.FC<Props> = ({ newStreak, prevStreak, isNew
               }}>🔥</span>
             </div>
 
-            {/* Text block */}
             <div className="flex-1">
-              {/* Number */}
               <div
                 className="font-black leading-none mb-1"
                 style={{
@@ -124,12 +142,11 @@ export const StreakLoginPopup: React.FC<Props> = ({ newStreak, prevStreak, isNew
                 }}
               >
                 {newStreak}
-                <span className="text-sm font-black ml-1.5 opacity-50" style={{ fontSize: '0.9rem' }}>
-                  {newStreak === 1 ? 'day' : 'days'}
+                <span className="font-black ml-1.5 opacity-50" style={{ fontSize: '0.9rem' }}>
+                  {isHindi ? (newStreak === 1 ? 'din' : 'din') : (newStreak === 1 ? 'day' : 'days')}
                 </span>
               </div>
 
-              {/* Day label badge */}
               <div
                 className="inline-block text-[10px] font-black px-2.5 py-0.5 rounded-full mb-1"
                 style={{
@@ -138,47 +155,30 @@ export const StreakLoginPopup: React.FC<Props> = ({ newStreak, prevStreak, isNew
                   color: isDecrement ? '#fca5a5' : '#fde68a',
                 }}
               >
-                {dayLabel}
+                {getDayLabel()}
               </div>
 
-              {/* Milestone text */}
               {isMilestone && !isDecrement && (
                 <p className="text-[11px] font-bold" style={{ color: '#a5b4fc' }}>
-                  🎉 {newStreak} Day Milestone!
-                </p>
-              )}
-
-              {/* New record text */}
-              {isNewRecord && (
-                <p className="text-[11px] font-bold" style={{ color: '#fde68a' }}>
-                  +100 💰 Record bonus credited!
+                  🎉 {isHindi ? `${newStreak} Din ka Milestone!` : `${newStreak}-Day Milestone!`}
                 </p>
               )}
             </div>
           </div>
 
-          {/* Reason box (only when streak lost) */}
           {isDecrement && (
             <div className="mt-4 rounded-2xl p-3" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}>
-              <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: '#fca5a5' }}>Kya hua?</p>
+              <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: '#fca5a5' }}>
+                {isHindi ? 'Kya hua?' : 'What happened?'}
+              </p>
               <p className="text-[11px] leading-snug" style={{ color: 'rgba(255,255,255,0.7)' }}>
-                Kal app nahi kholi thi, isliye streak {prevStreak} se {newStreak} ho gayi. Aaj se dobara shuru karo — ek din bhi mat chodo!
+                {isHindi
+                  ? `Kal app nahi kholi thi, isliye streak ${prevStreak} se ${newStreak} ho gayi. Aaj se dobara shuru karo — ek din bhi mat chodo!`
+                  : `You didn't open the app yesterday, so your streak went from ${prevStreak} to ${newStreak}. Start again today — don't miss a single day!`}
               </p>
             </div>
           )}
 
-          {/* Bonus credited (on increment) */}
-          {!isDecrement && !isNewRecord && (
-            <div className="mt-4 flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <span className="text-xl">🎁</span>
-              <div>
-                <p className="text-[11px] font-black" style={{ color: 'rgba(251,191,36,0.9)' }}>Daily Login Bonus Credited!</p>
-                <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.45)' }}>Check your credits for today's reward</p>
-              </div>
-            </div>
-          )}
-
-          {/* Action button */}
           <button
             onClick={handleClose}
             className="mt-5 w-full py-3.5 rounded-2xl font-black text-sm tracking-wide transition-all active:scale-95"
@@ -192,10 +192,9 @@ export const StreakLoginPopup: React.FC<Props> = ({ newStreak, prevStreak, isNew
               boxShadow: isDecrement ? '0 4px 20px rgba(239,68,68,0.3)' : isNewRecord ? '0 4px 20px rgba(251,191,36,0.3)' : '0 4px 20px rgba(29,78,216,0.3)',
             }}
           >
-            {isDecrement ? 'Aaj se dobara shuru karo 💪' : isNewRecord ? 'Zabardast! Continue karo 🏆' : 'Continue Learning 🔥'}
+            {btnLabel}
           </button>
 
-          {/* Sparkles for non-decrement */}
           {!isDecrement && [10, 28, 52, 74, 90].map((l, i) => (
             <div key={i} style={{
               position: 'absolute', top: `${6 + (i % 4) * 10}%`, left: `${l}%`,
@@ -209,7 +208,6 @@ export const StreakLoginPopup: React.FC<Props> = ({ newStreak, prevStreak, isNew
           ))}
         </div>
 
-        {/* Progress bar at bottom */}
         <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${accent.bar}88, transparent)` }} />
       </div>
     </div>

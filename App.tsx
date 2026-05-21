@@ -186,36 +186,8 @@ const App: React.FC = () => {
   const [isFlashSaleActive, setIsFlashSaleActive] = useState(false);
 
   useEffect(() => {
-      // Check Discount Logic Periodically
-      const checkDiscount = () => {
-          const lastVisitStr = localStorage.getItem('nst_store_last_visit');
-          if (lastVisitStr) {
-              const lastVisit = parseInt(lastVisitStr);
-              const now = Date.now();
-              const oneHour = 60 * 60 * 1000;
-              const twoHours = 2 * 60 * 60 * 1000;
-
-              // Active if > 1 hour AND < 2 hours from visit
-              if (now > (lastVisit + oneHour) && now < (lastVisit + twoHours)) {
-                  setIsFlashSaleActive(true);
-                  // Trigger Notification ONCE per session/activation
-                  const alertKey = `nst_flash_alert_${lastVisit}`;
-                  if (!sessionStorage.getItem(alertKey)) {
-                      setAlertConfig({
-                          isOpen: true,
-                          message: "🔥 Flash Sale Activated! Complete your purchase now for an extra discount!"
-                      });
-                      sessionStorage.setItem(alertKey, 'true');
-                  }
-              } else {
-                  setIsFlashSaleActive(false);
-              }
-          }
-      };
-
-      checkDiscount(); // Initial
-      const interval = setInterval(checkDiscount, 60000); // Check every minute
-      return () => clearInterval(interval);
+      // Flash sale popup disabled — discount is now delivered via mailbox (inbox) when user visits store
+      setIsFlashSaleActive(false);
   }, []);
 
   useEffect(() => {
@@ -569,8 +541,8 @@ const App: React.FC = () => {
           const alreadyInInbox = existingInbox.some(m => m.id === reward.id);
           if (alreadyInInbox) return;
           const rewardText = reward.type === 'COINS'
-              ? `${reward.label}: +${reward.amount} Credits aapko mile!`
-              : `${reward.label}: ${reward.subLevel || 'BASIC'} Access milega!`;
+              ? `${reward.label}: +${reward.amount} Credits received!`
+              : `${reward.label}: ${reward.subLevel || 'BASIC'} Access unlocked!`;
           const inboxMsg: any = {
               id: reward.id,
               text: rewardText,
@@ -591,8 +563,7 @@ const App: React.FC = () => {
           }
           updatedUser.inbox = [inboxMsg, ...existingInbox];
           hasUpdates = true;
-          // Toast after state update (slight delay so state is ready)
-          setTimeout(() => setAlertConfig({ isOpen: true, message: `🎁 ${reward.label} mila! Mail → Rewards mein jaake claim karo.` }), 1000);
+          setTimeout(() => setAlertConfig({ isOpen: true, message: `🎁 ${reward.label} received! Go to Mail → Rewards to claim.` }), 1000);
       };
 
       if (hasUpdates || newReward) {
@@ -631,6 +602,25 @@ const App: React.FC = () => {
                   }
               }
           }
+          // ── Streak Milestone Rewards (3, 7, 14, 30 days) ──
+          const currentStreak = updatedUser.streak || 0;
+          const STREAK_MILESTONES: Record<number, number> = { 3: 25, 7: 50, 14: 120, 30: 300 };
+          if (STREAK_MILESTONES[currentStreak] !== undefined) {
+              const milestoneCoins = STREAK_MILESTONES[currentStreak];
+              const milestoneId = `streak-milestone-${currentStreak}-${today.replace(/\s/g, '-')}`;
+              const milestoneLabel = `🔥 ${currentStreak}-Day Streak Reward!`;
+              const expiryHrs = state.settings.rewardExpiryHours ?? 24;
+              if (!(updatedUser.inbox || []).some((m: any) => m.id === milestoneId)) {
+                  pushRewardToInbox({
+                      id: milestoneId,
+                      type: 'COINS',
+                      amount: milestoneCoins,
+                      label: milestoneLabel,
+                      expiresAt: new Date(now.getTime() + expiryHrs * 60 * 60 * 1000).toISOString(),
+                  });
+              }
+          }
+
           if (hasUpdates) {
               // SAFE IMPERSONATION: Only save if NOT impersonating
               if (!state.originalAdmin) {
@@ -1164,8 +1154,8 @@ const App: React.FC = () => {
         const alreadyInInbox = existingInbox.some((m: any) => m.id === activeReward.id);
         if (!alreadyInInbox) {
             const rewardText = activeReward.type === 'COINS'
-                ? `${activeReward.label}: +${activeReward.amount} Credits aapko mile!`
-                : `${activeReward.label}: ${activeReward.subLevel || 'BASIC'} Access milega!`;
+                ? `${activeReward.label}: +${activeReward.amount} Credits received!`
+                : `${activeReward.label}: ${activeReward.subLevel || 'BASIC'} Access unlocked!`;
 
             const inboxMsg: any = {
                 id: activeReward.id,
@@ -1239,7 +1229,7 @@ const App: React.FC = () => {
                 saveUserToLive(updatedUser);
             }
             setState(prev => ({ ...prev, user: updatedUser }));
-            setAlertConfig({ isOpen: true, message: `🎁 ${activeReward.label} mila! Mail → Rewards mein jaake claim karo.` });
+            setAlertConfig({ isOpen: true, message: `🎁 ${activeReward.label} received! Go to Mail → Rewards to claim.` });
         }
 
         // Clear activeReward after processing
@@ -2820,6 +2810,7 @@ const App: React.FC = () => {
           prevStreak={streakLoginPopup.prevStreak}
           isNewRecord={streakLoginPopup.isNewRecord}
           onClose={() => setStreakLoginPopup(null)}
+          language={state.language}
         />
       )}
       

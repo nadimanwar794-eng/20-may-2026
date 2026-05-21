@@ -1378,7 +1378,7 @@ const AdminDashboardInner: React.FC<Props> = ({ onNavigate, settings, onUpdateSe
   const [broadcastSubLevel, setBroadcastSubLevel] = useState('BASIC');
   const [broadcastEffectColor, setBroadcastEffectColor] = useState('#fbbf24');
   const [broadcastEffectId, setBroadcastEffectId] = useState('border-runner-cw');
-  const [broadcastDurationHours, setBroadcastDurationHours] = useState(72);
+  const [broadcastDurationHours, setBroadcastDurationHours] = useState(168);
   const [broadcastTargetTier, setBroadcastTargetTier] = useState<'ALL' | 'FREE' | 'BASIC' | 'ULTRA'>('ALL');
   const [broadcastExpiryHours, setBroadcastExpiryHours] = useState(168);
   const [isSendingBroadcast, setIsSendingBroadcast] = useState(false);
@@ -10080,6 +10080,23 @@ Statement 2"
                                />
                                <span className="text-sm text-slate-600">Hours</span>
                                <span className="text-xs text-slate-400">(1–168 hours = max 7 days)</span>
+                             </div>
+                           </div>
+
+                           {/* Store Visit Discount Setting */}
+                           <div className="bg-white p-4 rounded-xl border border-green-200 shadow-sm">
+                             <h5 className="font-bold text-sm text-slate-800 mb-2 flex items-center gap-2">🏷️ Store Visit Discount</h5>
+                             <p className="text-xs text-slate-500 mb-3">Jab non-subscribed student Store tab open kare, uske mailbox mein ek discount redeem code bheja jayega (ek baar per din). Yahan discount % set karo.</p>
+                             <div className="flex items-center gap-3">
+                               <input
+                                 type="number"
+                                 min={1} max={100}
+                                 value={localSettings.storeVisitDiscountPercent ?? 10}
+                                 onChange={e => setLocalSettings({ ...localSettings, storeVisitDiscountPercent: Number(e.target.value) })}
+                                 className="w-24 p-2 border rounded-lg text-sm font-bold"
+                               />
+                               <span className="text-sm text-slate-600">% Discount</span>
+                               <span className="text-xs text-slate-400">(1–100%)</span>
                              </div>
                            </div>
 
