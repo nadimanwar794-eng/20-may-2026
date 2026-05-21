@@ -646,8 +646,8 @@ export const StudentDashboard: React.FC<Props> = ({
       const latestUser = (window as any).__dashUserRef?.current ?? freshUser;
       const alreadyHas = (latestUser.inbox || []).some((m: any) => m.id === msgId);
       if (alreadyHas) return;
-      const code = 'DISC' + Math.random().toString(36).toUpperCase().slice(2, 9);
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const code = 'DISC' + pct + Math.random().toString(36).toUpperCase().slice(2, 6);
+      const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
       const discMsg: any = {
         id: msgId,
         text: `🎁 Special Discount!\n\n⬆️ Upgrade your plan to unlock full power!\n\n🏷️ You got ${pct}% off — redeem now!`,
@@ -662,9 +662,9 @@ export const StudentDashboard: React.FC<Props> = ({
       localStorage.setItem(sentKey, '1');
     };
 
-    if (visitCount === 1) sendDiscount(settings?.storeVisitDiscountPercent ?? 10, '1');
-    if (visitCount === 3) sendDiscount(15, '3');
-    if (visitCount >= 5) sendDiscount(20, '5');
+    if (visitCount === 2) sendDiscount(settings?.storeVisitDiscountPercent ?? 10, '1');
+    if (visitCount === 3) sendDiscount(15, '2');
+    if (visitCount >= 5) sendDiscount(20, '3');
   }, [activeTab, user?.id]);
 
   // --- MCQ DAILY TRACKING HELPER ---
@@ -7633,10 +7633,8 @@ export const StudentDashboard: React.FC<Props> = ({
                   label: 'Write Mode (HTML View)',
                   value: isUltra
                     ? 'Unlimited'
-                    : isBasic
-                      ? `${basicLeft} / ${basicLimit} free today`
-                      : `${htmlCost} CR per session`,
-                  pill: isUltra ? 'green' : isBasic ? (basicLeft > 0 ? 'blue' : 'amber') : 'amber',
+                    : 'Ultra Only',
+                  pill: isUltra ? 'green' : 'amber',
                 },
                 {
                   icon: '💰',
@@ -7654,10 +7652,10 @@ export const StudentDashboard: React.FC<Props> = ({
               };
 
               return (
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                   <div className="px-4 pt-3 pb-1 flex items-center gap-2">
                     <span className="text-base">🔑</span>
-                    <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Your Feature Limits</p>
+                    <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Feature Limits</p>
                   </div>
                   <div className="divide-y divide-slate-100">
                     {rows.map((r, i) => (
@@ -7735,7 +7733,7 @@ export const StudentDashboard: React.FC<Props> = ({
 
               {/* Important Notes shortcut moved to bottom-nav (⭐ Important tab). */}
 
-              {/* SETTINGS */}
+              {/* SETTINGS in 3dot */}
               <button
                 onClick={() => setShowSettingsSheet(true)}
                 className="w-full p-4 flex items-center gap-3 hover:bg-slate-50 transition-colors active:bg-slate-100"
@@ -7986,6 +7984,23 @@ export const StudentDashboard: React.FC<Props> = ({
                 <h3 className={`text-lg font-black mb-4 flex items-center gap-2 ${sheetTextStrong}`}>
                   <Settings size={18} className={sheetTextMuted} /> {tApp(appLang, 'settings')}
                 </h3>
+                <button
+                  onClick={() => { setShowRulesPage(true); setShowDotsMenu(false); setShowSettingsSheet(false); }}
+                  className="w-full flex items-center gap-2 p-2.5 mb-3 rounded-xl bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200 text-violet-700 hover:from-violet-100 hover:to-indigo-100 font-bold text-xs transition-all"
+                >
+                  <span className="text-base">📋</span>
+                  <span className="flex-1 text-left">Feature Rules — Free / Basic / Ultra</span>
+                  <span className="text-[10px] text-violet-400">→</span>
+                </button>
+
+                <button
+                  onClick={() => { setShowRulesPage(true); setShowDotsMenu(false); setShowSettingsSheet(false); }}
+                  className="w-full flex items-center gap-2 p-2.5 rounded-xl bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200 text-violet-700 hover:from-violet-100 hover:to-indigo-100 font-bold text-xs transition-all"
+                >
+                  <span className="text-base">📋</span>
+                  <span className="flex-1 text-left">Feature Rules — Free / Basic / Ultra</span>
+                  <span className="text-[10px] text-violet-400">→</span>
+                </button>
 
                 {/* LANGUAGE TOGGLE — switches app text (settings, rules, warnings) */}
                 <div className={`w-full p-4 rounded-xl border shadow-sm flex items-center gap-3 transition-all ${cardBg}`}>
@@ -8472,17 +8487,6 @@ export const StudentDashboard: React.FC<Props> = ({
                             {user.isPremium ? 'Renew' : 'Upgrade'}
                           </button>
                         </div>
-                      </div>
-                      {/* Rules Page Link */}
-                      <div className="px-4 pt-3 pb-4">
-                        <button
-                          onClick={() => { setShowRulesPage(true); setShowDotsMenu(false); }}
-                          className="w-full flex items-center gap-2 p-2.5 rounded-xl bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200 text-violet-700 hover:from-violet-100 hover:to-indigo-100 font-bold text-xs transition-all"
-                        >
-                          <span className="text-base">📋</span>
-                          <span className="flex-1 text-left">Feature Rules — Free / Basic / Ultra</span>
-                          <span className="text-[10px] text-violet-400">→</span>
-                        </button>
                       </div>
                     </div>
                   </>

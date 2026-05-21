@@ -1,0 +1,19 @@
+--- components/RedeemSection.tsx
++++ components/RedeemSection.tsx
+@@ -79,7 +79,7 @@
+              redeemedList = Object.values(targetCode.redeemedBy);
+         }
+
+-        if (redeemedList.includes(user.id)) {
++        if (redeemedList.includes(user.id) && !cleanCode.startsWith('DISC')) {
+             setStatus('ERROR');
+             setMsg('You have already used this code.');
+             return;
+@@ -87,7 +87,7 @@
+
+         // TRANSACTIONAL UPDATE (Prevention against Race Conditions)
+-        if (source === 'RTDB') {
++        if (source === 'RTDB' && !cleanCode.startsWith('DISC')) {
+             const result = await runTransaction(codeRef, (currentCode) => {
+                 if (currentCode) {
+                     if (currentCode.usedCount >= currentCode.maxUses) {

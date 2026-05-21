@@ -1091,12 +1091,12 @@ export const ChunkedNotesReader: React.FC<Props> = ({ content, className, langua
 
               {/* HTML View toggle — visible when content is HTML OR a separate htmlContent prop is provided */}
               {hasHtmlToShow && (
-                (isUltraUser === false && !htmlUnlocked) ? (
+                (isUltraUser === false) ? (
                   <>
                     <button
                       type="button"
                       onClick={() => setShowHtmlUnlockPrompt(true)}
-                      className="shrink-0 flex items-center gap-1 px-2 py-1.5 rounded-lg bg-amber-50 text-amber-600 border border-amber-200 text-[10px] font-black active:scale-95 transition"
+                      className="hidden"
                       title={`Unlock HTML view for ${htmlUnlockCost} credits`}
                     >
                       🔒 HTML

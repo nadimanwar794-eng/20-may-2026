@@ -1,0 +1,25 @@
+--- components/RedeemSection.tsx
++++ components/RedeemSection.tsx
+@@ -28,6 +28,15 @@
+         let targetCode: any = null;
+         let source = 'NONE';
+
++        // Handle special local store discount codes
++        if (cleanCode.startsWith('DISC')) {
++            targetCode = {
++                type: 'DISCOUNT',
++                code: cleanCode,
++                discountPercent: parseInt(cleanCode.substring(4)) || 10 // Fallback if no specific percent encoded
++            };
++        } else {
++
+         // 1. Check RTDB
+         const codeRef = ref(rtdb, `redeem_codes/${cleanCode}`);
+         const snapshot = await get(codeRef);
+@@ -46,6 +55,7 @@
+             } catch(e) { console.error("Firestore Code Check Error", e); }
+         }
++        }
+
+         if (!targetCode) {
+             setStatus('ERROR');

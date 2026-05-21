@@ -1,0 +1,13 @@
+--- components/RedeemSection.tsx
++++ components/RedeemSection.tsx
+@@ -109,6 +109,5 @@
+                     if (currentCode.usedCount >= currentCode.maxUses) {
+                         return;
+-            } // Abort if max reached
+                     }
+                     const currentRedeemedBy = Array.isArray(currentCode.redeemedBy)
+@@ -118,6 +117,5 @@
+                     if (currentRedeemedBy.includes(user.id)) {
+                         return;
+-            } // Abort if already used
+                     }

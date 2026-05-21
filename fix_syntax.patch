@@ -1,0 +1,25 @@
+--- components/RedeemSection.tsx
++++ components/RedeemSection.tsx
+@@ -108,13 +108,13 @@
+                 if (currentCode) {
+                     if (currentCode.usedCount >= currentCode.maxUses) {
+                         return;
+-            } // Abort if max reached
++                    } // Abort if max reached
+                     const currentRedeemedBy = Array.isArray(currentCode.redeemedBy)
+                         ? currentCode.redeemedBy
+                         : (currentCode.redeemedBy ? Object.values(currentCode.redeemedBy) : []);
+
+                     if (currentRedeemedBy.includes(user.id)) {
+                         return;
+-            } // Abort if already used
++                    } // Abort if already used
+
+                     currentCode.usedCount = (currentCode.usedCount || 0) + 1;
+@@ -134,6 +134,5 @@
+                 setMsg('Code usage limit reached or collision detected. Please try again.');
+                 return;
+             }
+-            }
+             // Sync to Firestore (Best Effort) — send ONLY the changed fields so it
+             // passes the strict Firestore redeem rule (`affectedKeys().hasOnly(...)`).

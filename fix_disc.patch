@@ -1,0 +1,24 @@
+--- components/StudentDashboard.tsx
++++ components/StudentDashboard.tsx
+@@ -646,8 +646,8 @@
+       const latestUser = (window as any).__dashUserRef?.current ?? freshUser;
+       const alreadyHas = (latestUser.inbox || []).some((m: any) => m.id === msgId);
+       if (alreadyHas) return;
+-      const code = 'DISC' + Math.random().toString(36).toUpperCase().slice(2, 9);
+-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
++      const code = 'DISC' + pct;
++      const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+       const discMsg: any = {
+         id: msgId,
+         text: `🎁 Special Discount!\n\n⬆️ Upgrade your plan to unlock full power!\n\n🏷️ You got ${pct}% off — redeem now!`,
+@@ -662,8 +662,8 @@
+       localStorage.setItem(sentKey, '1');
+     };
+
+-    if (visitCount === 1) sendDiscount(settings?.storeVisitDiscountPercent ?? 10, '1');
+-    if (visitCount === 3) sendDiscount(15, '3');
+-    if (visitCount >= 5) sendDiscount(20, '5');
++    if (visitCount === 2) sendDiscount(settings?.storeVisitDiscountPercent ?? 10, '1');
++    if (visitCount === 3) sendDiscount(15, '2');
++    if (visitCount >= 5) sendDiscount(20, '3');
+   }, [activeTab, user?.id]);

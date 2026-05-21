@@ -153,7 +153,10 @@ export const AppLoadingScreen: React.FC<AppLoadingScreenProps> = ({ onComplete, 
   useEffect(() => { appNameRef.current = appName; }, [appName]);
 
   useEffect(() => {
-    const duration = 2000;
+    let duration = 5000; // Free user default
+    if (subscriptionLevel === 'ULTRA') duration = 1000;
+    else if (subscriptionLevel === 'BASIC') duration = 3000;
+
     const intervalTime = 50;
     const steps = duration / intervalTime;
     let currentStep = Math.floor((progress / 100) * steps);

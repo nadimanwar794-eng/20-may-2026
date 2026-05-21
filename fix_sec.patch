@@ -1,0 +1,26 @@
+--- components/RedeemSection.tsx
++++ components/RedeemSection.tsx
+@@ -55,12 +55,19 @@
+                 }
+             } catch(e) { console.error("Firestore Code Check Error", e); }
+         }
+-        }
+
+         if (!targetCode) {
+-            setStatus('ERROR');
+-            setMsg('Invalid Code. Please check and try again.');
+-            return;
++            // Verify auto generated code in inbox to prevent exploiting random DISC codes
++            const inboxMatch = user.inbox?.find(m => m.redeemCode === cleanCode && m.type === 'REDEEM_CODE');
++            if (inboxMatch && cleanCode.startsWith('DISC')) {
++                targetCode = {
++                    type: 'DISCOUNT',
++                    code: cleanCode,
++                    discountPercent: parseInt(cleanCode.substring(4)) || 10
++                };
++            } else {
++                setStatus('ERROR');
++                setMsg('Invalid Code. Please check and try again.');
++                return;
++            }
+         }

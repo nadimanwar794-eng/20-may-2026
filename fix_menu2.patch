@@ -1,0 +1,17 @@
+--- components/StudentDashboard.tsx
++++ components/StudentDashboard.tsx
+@@ -7987,6 +7987,15 @@
+                 <h3 className={`text-lg font-black mb-4 flex items-center gap-2 ${sheetTextStrong}`}>
+                   <Settings size={18} className={sheetTextMuted} /> {tApp(appLang, 'settings')}
+                 </h3>
++                <button
++                  onClick={() => { setShowRulesPage(true); setShowDotsMenu(false); setShowSettingsSheet(false); }}
++                  className="w-full flex items-center gap-2 p-2.5 rounded-xl bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200 text-violet-700 hover:from-violet-100 hover:to-indigo-100 font-bold text-xs transition-all"
++                >
++                  <span className="text-base">📋</span>
++                  <span className="flex-1 text-left">Feature Rules — Free / Basic / Ultra</span>
++                  <span className="text-[10px] text-violet-400">→</span>
++                </button>
+
+                 {/* LANGUAGE TOGGLE — switches app text (settings, rules, warnings) */}
+                 <div className={`w-full p-4 rounded-xl border shadow-sm flex items-center gap-3 transition-all ${cardBg}`}>

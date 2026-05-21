@@ -1,0 +1,13 @@
+--- components/StudentDashboard.tsx
++++ components/StudentDashboard.tsx
+@@ -646,8 +646,8 @@
+       const latestUser = (window as any).__dashUserRef?.current ?? freshUser;
+       const alreadyHas = (latestUser.inbox || []).some((m: any) => m.id === msgId);
+       if (alreadyHas) return;
+-      const code = 'DISC' + pct;
+-      const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
++      const code = 'DISC' + pct + Math.random().toString(36).toUpperCase().slice(2, 6);
++      const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+       const discMsg: any = {
+         id: msgId,
+         text: `🎁 Special Discount!\n\n⬆️ Upgrade your plan to unlock full power!\n\n🏷️ You got ${pct}% off — redeem now!`,

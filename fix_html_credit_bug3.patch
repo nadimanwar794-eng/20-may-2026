@@ -1,0 +1,13 @@
+--- components/ChunkedNotesReader.tsx
++++ components/ChunkedNotesReader.tsx
+@@ -1094,7 +1094,7 @@
+                 (isUltraUser === false) ? (
+                   <>
+                     <button
+                       type="button"
+                       onClick={() => setShowHtmlUnlockPrompt(true)}
+-                      className="hidden"
++                      className="hidden"
+                       title={`Unlock HTML view for ${htmlUnlockCost} credits`}
+                     >
+                       🔒 HTML

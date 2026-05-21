@@ -1,0 +1,11 @@
+--- components/StudentDashboard.tsx
++++ components/StudentDashboard.tsx
+@@ -7657,7 +7657,7 @@
+                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                   <div className="px-4 pt-3 pb-1 flex items-center gap-2">
+                     <span className="text-base">🔑</span>
+-                    <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Your Feature Limits</p>
++                    <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Feature Limits</p>
+                   </div>
+                   <div className="divide-y divide-slate-100">
+                     {rows.map((r, i) => (

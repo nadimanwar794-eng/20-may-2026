@@ -27,6 +27,15 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
         let targetCode: any = null;
         let source = 'NONE';
 
+        // Handle special local store discount codes
+        if (cleanCode.startsWith('DISC')) {
+            targetCode = {
+                type: 'DISCOUNT',
+                code: cleanCode,
+                discountPercent: parseInt(cleanCode.substring(4)) || 10 // Fallback if no specific percent encoded
+            };
+        } else {
+
         // 1. Check RTDB
         const codeRef = ref(rtdb, `redeem_codes/${cleanCode}`);
         const snapshot = await get(codeRef);
@@ -47,9 +56,18 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
         }
 
         if (!targetCode) {
+            const inboxMatch = user.inbox?.find(m => m.redeemCode === cleanCode && m.type === 'REDEEM_CODE');
+            if (inboxMatch && cleanCode.startsWith('DISC')) {
+                targetCode = {
+                    type: 'DISCOUNT',
+                    code: cleanCode,
+                    discountPercent: parseInt(cleanCode.substring(4)) || 10
+                };
+            } else {
             setStatus('ERROR');
             setMsg('Invalid Code. Please check and try again.');
             return;
+            }
         }
         
         // CHECK IF REDEEMED / EXHAUSTED
@@ -63,6 +81,7 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
             setStatus('ERROR');
             setMsg('This code has reached its maximum usage limit.');
             return;
+            }
         }
 
         // CHECK IF ALREADY USED BY THIS USER (For Multi-Use Codes)
@@ -77,26 +96,26 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
              redeemedList = Object.values(targetCode.redeemedBy);
         }
 
-        if (redeemedList.includes(user.id)) {
+        if (redeemedList.includes(user.id) && !cleanCode.startsWith('DISC')) {
             setStatus('ERROR');
             setMsg('You have already used this code.');
             return;
         }
 
         // TRANSACTIONAL UPDATE (Prevention against Race Conditions)
-        if (source === 'RTDB') {
+        if (source === 'RTDB' && !cleanCode.startsWith('DISC')) {
             const result = await runTransaction(codeRef, (currentCode) => {
                 if (currentCode) {
                     if (currentCode.usedCount >= currentCode.maxUses) {
-                        return; // Abort if max reached
-                    }
+                        return;
+                    } // Abort if max reached
                     const currentRedeemedBy = Array.isArray(currentCode.redeemedBy)
                         ? currentCode.redeemedBy
                         : (currentCode.redeemedBy ? Object.values(currentCode.redeemedBy) : []);
 
                     if (currentRedeemedBy.includes(user.id)) {
-                        return; // Abort if already used
-                    }
+                        return;
+                    } // Abort if already used
 
                     currentCode.usedCount = (currentCode.usedCount || 0) + 1;
                     currentCode.isRedeemed = currentCode.usedCount >= currentCode.maxUses;
@@ -150,7 +169,7 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
         // 3. APPLY REWARD TO USER
         let updatedUser = { 
             ...user, 
-            redeemedCodes: [...(user.redeemedCodes || []), targetCode.code] 
+            redeemedCodes: [...(user.redeemedCodes || []), cleanCode]
         };
         let successMessage = '';
 

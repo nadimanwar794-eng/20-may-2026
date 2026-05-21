@@ -1,0 +1,18 @@
+--- RedeemSection.tsx
++++ RedeemSection.tsx
+@@ -48,6 +48,15 @@
+
+         if (!targetCode) {
++            const inboxMatch = user.inbox?.find(m => m.redeemCode === cleanCode && m.type === 'REDEEM_CODE');
++            if (inboxMatch && cleanCode.startsWith('DISC')) {
++                targetCode = {
++                    type: 'DISCOUNT',
++                    code: cleanCode,
++                    discountPercent: parseInt(cleanCode.substring(4)) || 10
++                };
++            } else {
+             setStatus('ERROR');
+             setMsg('Invalid Code. Please check and try again.');
+             return;
++            }
+         }

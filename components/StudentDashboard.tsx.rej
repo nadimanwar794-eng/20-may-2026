@@ -1,0 +1,14 @@
+--- StudentDashboard.tsx
++++ StudentDashboard.tsx
+@@ -7633,9 +7633,7 @@
+                   label: 'Write Mode (HTML View)',
+                   value: isUltra
+                     ? 'Unlimited'
+-                    : isBasic
+-                      ? `${basicLeft} / ${basicLimit} free today`
+-                      : `${htmlCost} CR per session`,
+-                  pill: isUltra ? 'green' : isBasic ? (basicLeft > 0 ? 'blue' : 'amber') : 'amber',
++                    : 'Ultra Only',
++                  pill: isUltra ? 'green' : 'amber',
+                 },
+                 {

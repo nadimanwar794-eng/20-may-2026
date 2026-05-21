@@ -1,0 +1,10 @@
+--- components/RedeemSection.tsx
++++ components/RedeemSection.tsx
+@@ -155,7 +155,7 @@
+         // 3. APPLY REWARD TO USER
+         let updatedUser = {
+             ...user,
+-            redeemedCodes: [...(user.redeemedCodes || []), targetCode.code]
++            redeemedCodes: [...(user.redeemedCodes || []), cleanCode]
+         };
+         let successMessage = '';

@@ -1,0 +1,11 @@
+--- components/StudentDashboard.tsx
++++ components/StudentDashboard.tsx
+@@ -7625,7 +7625,7 @@
+               const rows = [
+                 {
+                   icon: '📝',
+-                  label: 'Notes / PDF / Video / Audio / MCQ / Feature Limits / Daily Limit',
++                  label: 'Notes / PDF / Video / Audio / MCQ',
+                   value: isUltra ? 'Unlimited' : 'Ultra only',
+                   pill: isUltra ? 'green' : 'red' as any,
+                 },
