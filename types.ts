@@ -755,6 +755,7 @@ export interface SystemSettings {
   pdfFreeLimitUltra?: number; // Free PDFs/day for Ultra (default 10)
   writeModeFreeLimitBasic?: number; // Free write modes/day for Basic (default 5)
   writeModeFreeLimitUltra?: number; // Free write modes/day for Ultra (default 10)
+  writeModeFreeLimitFree?: number; // Free write modes/day for Free users (default 5)
   writeModeCreditFree?: number; // Write mode cost for Free users (default 5)
   writeModeCreditPaid?: number; // Write mode cost after free limit (default 10)
   writeModeMaxLimit?: number; // After this many uses, cost becomes 20 for all (default 20)

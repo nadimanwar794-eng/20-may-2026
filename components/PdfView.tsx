@@ -501,11 +501,11 @@ export const PdfView: React.FC<Props> = ({
     }
     const todayStr = new Date().toDateString();
     const dailyCount = (user.dailyWriteDate === todayStr) ? (user.dailyWriteCount ?? 0) : 0;
-    const freeLimit = user.subscriptionLevel === 'ULTRA'
-      ? (settings?.writeModeFreeLimitUltra ?? 10)
-      : user.subscriptionLevel === 'BASIC'
-      ? (settings?.writeModeFreeLimitBasic ?? 5)
-      : 0;
+        const freeLimit = user.subscriptionLevel === 'ULTRA'
+            ? (settings?.writeModeFreeLimitUltra ?? 10)
+            : user.subscriptionLevel === 'BASIC'
+            ? (settings?.writeModeFreeLimitBasic ?? 5)
+            : (settings?.writeModeFreeLimitFree ?? 5);
     if (dailyCount < freeLimit) {
       const updatedUser = { ...user, dailyWriteDate: todayStr, dailyWriteCount: dailyCount + 1 };
       localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));

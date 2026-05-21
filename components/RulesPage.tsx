@@ -49,6 +49,13 @@ export const RulesPage: React.FC<Props> = ({ onBack, settings }) => {
                       "Audio Studio: Convert notes to speech. Detects Hindi/English automatically."
                   ]
               }
+              ,
+              writeMode: {
+                  title: "Write Mode",
+                  points: [
+                      "Write Mode (HTML Notes): Free users get 5 free uses/day; Basic 5 free/day; Ultra 10 free/day. After free uses, coins are charged per use."
+                  ]
+              }
           }
       },
       HI: {
@@ -86,6 +93,14 @@ export const RulesPage: React.FC<Props> = ({ onBack, settings }) => {
                       "CBSE बोर्ड: सारी पढ़ाई अंग्रेजी में होगी।",
                       "ऑडियो स्टूडियो: अपने नोट्स को आवाज़ में बदलें। हिंदी और अंग्रेजी दोनों काम करता है।"
                   ]
+              }
+                  ,
+              writeMode: {
+                  title: "Write Mode",
+                  points: [
+                      "Write Mode (HTML Notes): Free users get 5 free uses/day; Basic 5 free/day; Ultra 10 free/day. After free uses, coins are charged per use."
+                  ]
+              }
               }
           }
       }
