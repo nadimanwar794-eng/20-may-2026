@@ -1,0 +1,12 @@
+--- components/StudentDashboard.tsx
++++ components/StudentDashboard.tsx
+@@ -8491,9 +8491,4 @@
+                           <div>
+                             <p className="text-xs font-black text-slate-700">{user.subscriptionTier || 'Free Plan'}</p>
+-                            {user.subscriptionEndDate && user.isPremium && (
+-                              <p className="text-[10px] text-slate-500 mt-0.5">
+-                                Expires: {new Date(user.subscriptionEndDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+-                              </p>
+-                            )}
+                           </div>
+                           <button

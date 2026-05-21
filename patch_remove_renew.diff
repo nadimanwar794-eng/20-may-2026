@@ -1,0 +1,27 @@
+<<<<<<< SEARCH
+                      {/* Subscription Info */}
+                      <div className="px-4 pt-3 pb-2 border-b border-slate-100">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Subscription</p>
+                        <div className="bg-slate-50 rounded-xl p-3 flex items-center justify-between">
+                          <div>
+                            <p className="text-xs font-black text-slate-700">{user.subscriptionTier || 'Free Plan'}</p>
+                          </div>
+                          <button
+                            onClick={() => { onTabChange("STORE"); setShowDotsMenu(false); }}
+                            className="text-[10px] font-black bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-3 py-1.5 rounded-full"
+                          >
+                            {user.isPremium ? 'Renew' : 'Upgrade'}
+                          </button>
+                        </div>
+                      </div>
+=======
+                      {/* Subscription Info */}
+                      <div className="px-4 pt-3 pb-2 border-b border-slate-100">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Subscription</p>
+                        <div className="bg-slate-50 rounded-xl p-3 flex items-center justify-between">
+                          <div>
+                            <p className="text-xs font-black text-slate-700">{user.subscriptionTier || 'Free Plan'}</p>
+                          </div>
+                        </div>
+                      </div>
+>>>>>>> REPLACE

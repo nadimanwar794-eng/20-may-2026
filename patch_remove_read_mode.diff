@@ -1,0 +1,68 @@
+<<<<<<< SEARCH
+              {/* Read / Write toggle — right next to note title */}
+              {effectiveMode === 'notes' && (
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button
+                    onClick={() => { stopSpeech(); setHwNotesViewMode('chunk'); }}
+                    className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${hwNotesViewMode === 'chunk' ? 'bg-amber-400 text-white border-amber-400 shadow-sm' : 'bg-white/20 text-white border-white/30 hover:bg-white/30'}`}
+                    title="Read Mode"
+                  >
+                    <Volume2 size={11} /> Read
+                  </button>
+                  <button
+                    onClick={() => { stopSpeech(); setHwNotesViewMode('html'); }}
+                    className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${hwNotesViewMode === 'html' ? 'bg-teal-400 text-white border-teal-400 shadow-sm' : 'bg-white/20 text-white border-white/30 hover:bg-white/30'}`}
+                    title="Write Mode"
+                  >
+                    <FileText size={11} /> Write
+                  </button>
+                  <div className="flex items-center gap-0 bg-white/20 rounded-lg overflow-hidden border border-white/30 shrink-0">
+                    <button onClick={zoomOut} className="px-1.5 py-1 text-white text-[11px] font-black hover:bg-white/20 transition-colors" title="Zoom Out">A-</button>
+=======
+              {/* Read / Write toggle — right next to note title */}
+              {effectiveMode === 'notes' && (
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button
+                    onClick={() => { stopSpeech(); setHwNotesViewMode('html'); }}
+                    className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${hwNotesViewMode === 'html' ? 'bg-teal-400 text-white border-teal-400 shadow-sm' : 'bg-white/20 text-white border-white/30 hover:bg-white/30'}`}
+                    title="Write Mode"
+                  >
+                    <FileText size={11} /> Write
+                  </button>
+                  <div className="flex items-center gap-0 bg-white/20 rounded-lg overflow-hidden border border-white/30 shrink-0">
+                    <button onClick={zoomOut} className="px-1.5 py-1 text-white text-[11px] font-black hover:bg-white/20 transition-colors" title="Zoom Out">A-</button>
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+              {/* Read / Write toggle — right next to lesson title */}
+              {lucentActiveTab === 'NOTES' && (
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button
+                    onClick={() => { stopSpeech(); setLucentNotesViewMode('chunk'); }}
+                    className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${lucentNotesViewMode === 'chunk' ? 'bg-amber-400 text-white border-amber-400 shadow-sm' : 'bg-white/20 text-white border-white/30 hover:bg-white/30'}`}
+                    title="Read Mode"
+                  >
+                    <Volume2 size={11} /> Read
+                  </button>
+                  <button
+                    onClick={() => { stopSpeech(); setLucentNotesViewMode('html'); }}
+                    className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${lucentNotesViewMode === 'html' ? 'bg-teal-400 text-white border-teal-400 shadow-sm' : 'bg-white/20 text-white border-white/30 hover:bg-white/30'}`}
+                    title="Write Mode"
+                  >
+                    <FileText size={11} /> Write
+                  </button>
+                  <div className="flex items-center gap-0 bg-white/20 rounded-lg overflow-hidden border border-white/30 shrink-0">
+                    <button onClick={zoomOut} className="px-1.5 py-1 text-white text-[11px] font-black hover:bg-white/20 transition-colors" title="Zoom Out">A-</button>
+=======
+              {/* Read / Write toggle — right next to lesson title */}
+              {lucentActiveTab === 'NOTES' && (
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button
+                    onClick={() => { stopSpeech(); setLucentNotesViewMode('html'); }}
+                    className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${lucentNotesViewMode === 'html' ? 'bg-teal-400 text-white border-teal-400 shadow-sm' : 'bg-white/20 text-white border-white/30 hover:bg-white/30'}`}
+                    title="Write Mode"
+                  >
+                    <FileText size={11} /> Write
+                  </button>
+                  <div className="flex items-center gap-0 bg-white/20 rounded-lg overflow-hidden border border-white/30 shrink-0">
+                    <button onClick={zoomOut} className="px-1.5 py-1 text-white text-[11px] font-black hover:bg-white/20 transition-colors" title="Zoom Out">A-</button>
+>>>>>>> REPLACE
