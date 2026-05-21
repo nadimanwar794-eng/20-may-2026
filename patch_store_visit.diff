@@ -1,0 +1,22 @@
+--- components/StudentDashboard.tsx
++++ components/StudentDashboard.tsx
+@@ -624,6 +624,19 @@
+   // NOTE: uses userRef.current (defined later in the component) to avoid stale closure
+   // overwriting inbox. Effect callbacks are closures that execute AFTER the full
+   // component function runs, so userRef is already initialized by then.
+   useEffect(() => {
+     if (activeTab !== 'STORE') return;
+     const freshUser = (window as any).__dashUserRef?.current ?? user;
+     const isSubscribed = freshUser.isPremium && freshUser.subscriptionEndDate && new Date(freshUser.subscriptionEndDate) > new Date();
+     if (isSubscribed) return;
+     if (!freshUser?.id) return;
+     const today = new Date().toISOString().split('T')[0];
++
++    // Get session tracking logic
++    const lastLoginTime = freshUser?.lastLoginTime || "0"; // You might need a proper lastLoginTime tracking
+
+     // Increment visit count for today
+-    const visitCountKey = `nst_store_visits_${freshUser.id}_${today}`;
++    // Let's modify visit logic: we need to track if it's the 1st, 2nd (3rd), 3rd (5th) visit per login
++    const sessionKey = `nst_store_visits_session_${freshUser.id}_${today}`;
++    // We can just keep the old logic but add expiration or track by session.

@@ -632,13 +632,22 @@ export const StudentDashboard: React.FC<Props> = ({
     if (!freshUser?.id) return;
     const today = new Date().toISOString().split('T')[0];
 
-    // Increment visit count for today
-    const visitCountKey = `nst_store_visits_${freshUser.id}_${today}`;
+    // Increment visit count for today per login
+    // we use a combination of date and a session marker (or just tracking visits since load)
+    const sessionToken = (window as any).__sessionToken || ((window as any).__sessionToken = Date.now().toString());
+    const visitCountKey = `nst_store_visits_${freshUser.id}_${today}_${sessionToken}`;
+
+    // Check total visits today across all sessions to limit max 10
+    const dailyTotalKey = `nst_store_total_visits_${freshUser.id}_${today}`;
+    const dailyTotal = parseInt(localStorage.getItem(dailyTotalKey) || '0', 10) + 1;
+    if (dailyTotal > 10) return; // Limit reached
+    localStorage.setItem(dailyTotalKey, String(dailyTotal));
+
     const visitCount = parseInt(localStorage.getItem(visitCountKey) || '0', 10) + 1;
     localStorage.setItem(visitCountKey, String(visitCount));
 
     // Helper: send one discount mail if not already sent at this tier today
-    const sendDiscount = (pct: number, tier: string) => {
+    const sendDiscount = async (pct: number, tier: string) => {
       const sentKey = `nst_store_disc${tier}_${freshUser.id}_${today}`;
       if (localStorage.getItem(sentKey)) return;
       const msgId = `store-disc-${tier}-${today}`;
@@ -646,11 +655,42 @@ export const StudentDashboard: React.FC<Props> = ({
       const latestUser = (window as any).__dashUserRef?.current ?? freshUser;
       const alreadyHas = (latestUser.inbox || []).some((m: any) => m.id === msgId);
       if (alreadyHas) return;
+
       const code = 'DISC' + Math.random().toString(36).toUpperCase().slice(2, 9);
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(); // 2 hours
+
+      // Save code to Firebase so it can be redeemed
+      try {
+          const { doc, setDoc } = require('firebase/firestore');
+          const { db } = require('../firebase');
+          await setDoc(doc(db, "redeem_codes", code), {
+              code,
+              type: 'DISCOUNT',
+              discountPercent: pct,
+              maxUses: 1,
+              usedCount: 0,
+              isRedeemed: false,
+              expiresAt,
+              createdBy: 'SYSTEM_AUTO'
+          });
+
+          const { ref: rtdbRef, set: rtdbSet } = require('firebase/database');
+          const { rtdb } = require('../firebase');
+          await rtdbSet(rtdbRef(rtdb, `redeem_codes/${code}`), {
+              code,
+              type: 'DISCOUNT',
+              discountPercent: pct,
+              maxUses: 1,
+              usedCount: 0,
+              isRedeemed: false,
+              expiresAt,
+              createdBy: 'SYSTEM_AUTO'
+          });
+      } catch (e) { console.error("Error creating discount code", e); }
+
       const discMsg: any = {
         id: msgId,
-        text: `🎁 Special Discount!\n\n⬆️ Upgrade your plan to unlock full power!\n\n🏷️ You got ${pct}% off — redeem now!`,
+        text: `🎁 Special Discount!\n\n⬆️ Upgrade your plan to unlock full power!\n\n🏷️ You got ${pct}% off — redeem now! (Expires in 2 hours)`,
         date: new Date().toISOString(),
         read: false,
         type: 'REDEEM_CODE',
@@ -662,7 +702,7 @@ export const StudentDashboard: React.FC<Props> = ({
       localStorage.setItem(sentKey, '1');
     };
 
-    if (visitCount === 1) sendDiscount(settings?.storeVisitDiscountPercent ?? 10, '1');
+    if (visitCount === 2) sendDiscount(settings?.storeVisitDiscountPercent ?? 10, '1');
     if (visitCount === 3) sendDiscount(15, '3');
     if (visitCount >= 5) sendDiscount(20, '5');
   }, [activeTab, user?.id]);
@@ -16400,54 +16440,26 @@ RULES:
               </div>
             </div>
 
-            {/* WRITE MODE */}
-            <div className="bg-white border border-teal-200 rounded-2xl overflow-hidden shadow-sm">
-              <div className="bg-teal-50 px-4 py-2.5 flex items-center gap-2">
-                <span className="text-lg">✏️</span>
-                <div>
-                  <p className="font-black text-sm text-slate-800">Write Mode (HTML Notes)</p>
-                  <p className="text-[10px] text-slate-500">Notes ka full rendered view — Deep Dive mein</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 divide-x divide-slate-100">
-                <div className="p-3 text-center">
-                  <p className="text-xs font-black text-red-500">{settings?.writeModeCreditFree ?? 5} coins</p>
-                  <p className="text-[9px] text-slate-400 mt-1">Har baar</p>
-                </div>
-                <div className="p-3 text-center">
-                  <p className="text-xs font-black text-green-600">{settings?.writeModeFreeLimitBasic ?? 5} free/day</p>
-                  <p className="text-[9px] text-slate-400 mt-1">Phir {settings?.writeModeCreditPaid ?? 10} coins</p>
-                </div>
-                <div className="p-3 text-center">
-                  <p className="text-xs font-black text-violet-600">{settings?.writeModeFreeLimitUltra ?? 10} free/day</p>
-                  <p className="text-[9px] text-slate-400 mt-1">Phir {settings?.writeModeCreditPaid ?? 10} coins</p>
-                </div>
-              </div>
-              <div className="px-4 pb-2.5">
-                <p className="text-[9px] text-slate-400">📌 {settings?.writeModeMaxLimit ?? 20}+ uses/day hone ke baad sabke liye 20 coins per use</p>
-              </div>
-            </div>
-
             {/* HTML VIEWS */}
             <div className="bg-white border border-purple-200 rounded-2xl overflow-hidden shadow-sm">
               <div className="bg-purple-50 px-4 py-2.5 flex items-center gap-2">
                 <span className="text-lg">🌐</span>
                 <div>
-                  <p className="font-black text-sm text-slate-800">HTML / Rich Notes View</p>
+                  <p className="font-black text-sm text-slate-800">Write Mode (HTML View)</p>
                   <p className="text-[10px] text-slate-500">Chunk notes ka full HTML rendered view</p>
                 </div>
               </div>
               <div className="grid grid-cols-3 divide-x divide-slate-100">
                 <div className="p-3 text-center">
-                  <p className="text-xs font-black text-red-500">🔒 Locked</p>
-                  <p className="text-[9px] text-slate-400 mt-1">Available nahi</p>
+                  <p className="text-xs font-black text-red-500">{settings?.htmlUnlockCost ?? 5} coins</p>
+                  <p className="text-[9px] text-slate-400 mt-1">Har baar</p>
                 </div>
                 <div className="p-3 text-center">
-                  <p className="text-xs font-black text-amber-600">🔒 Locked</p>
-                  <p className="text-[9px] text-slate-400 mt-1">Ultra chahiye</p>
+                  <p className="text-xs font-black text-green-600">{settings?.basicHtmlDailyLimit ?? 3} free/day</p>
+                  <p className="text-[9px] text-slate-400 mt-1">Phir {settings?.htmlUnlockCost ?? 5} coins</p>
                 </div>
                 <div className="p-3 text-center">
-                  <p className="text-xs font-black text-green-600">✅ Free</p>
+                  <p className="text-xs font-black text-green-600">✅ Unlimited</p>
                   <p className="text-[9px] text-slate-400 mt-1">Ultra users only</p>
                 </div>
               </div>

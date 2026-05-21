@@ -1,0 +1,23 @@
+--- components/PdfView.tsx
++++ components/PdfView.tsx
+@@ -490,20 +490,14 @@
+   };
+
+   // WRITE MODE CREDIT CHECK — har baar html view khulne par check
+   const handleWriteModeClick = () => {
+     if (deepDiveViewMode === 'html') {
+       stopSpeech(); setIsAutoPlaying(false); setDeepDiveViewMode('chunk');
+       return;
+     }
+     if (user.role === 'ADMIN') {
+       stopSpeech(); setIsAutoPlaying(false); setDeepDiveViewMode('html');
+       return;
+     }
+     const todayStr = new Date().toDateString();
+     const dailyCount = (user.dailyWriteDate === todayStr) ? (user.dailyWriteCount ?? 0) : 0;
+-    const freeLimit = user.subscriptionLevel === 'ULTRA'
+-      ? (settings?.writeModeFreeLimitUltra ?? 10)
+-      : user.subscriptionLevel === 'BASIC'
+-      ? (settings?.writeModeFreeLimitBasic ?? 5)
+-      : 0;
++    // Let's replace the whole block because the feature rules changed.

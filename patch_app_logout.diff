@@ -1,0 +1,20 @@
+--- App.tsx
++++ App.tsx
+@@ -1392,7 +1392,16 @@
+        return;
+     }
+     setLogoutPending(true);
+-    setLogoutTimeLeft(3);
++
++    let waitTime = 5; // Free users
++    if (state.user.subscriptionTier !== "FREE") {
++        if (state.user.subscriptionLevel === "ULTRA") {
++            waitTime = 1; // Ultra
++        } else if (state.user.subscriptionLevel === "BASIC") {
++            waitTime = 3; // Basic
++        }
++    }
++    setLogoutTimeLeft(waitTime);
+   };
+
+   const handleMCQComplete = (score: number, answers: Record<number, number>, displayData: MCQItem[], timeTaken: number) => {
