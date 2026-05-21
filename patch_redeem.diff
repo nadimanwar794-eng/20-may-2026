@@ -1,0 +1,14 @@
+--- components/RedeemSection.tsx
++++ components/RedeemSection.tsx
+@@ -58,6 +58,11 @@
+         const maxUses = Number(targetCode.maxUses) || 1;
+         const currentUses = Number(targetCode.usedCount) || 0;
+
++        if (targetCode.type === 'DISCOUNT' && targetCode.expiresAt && new Date(targetCode.expiresAt) < new Date()) {
++            setStatus('ERROR');
++            setMsg('This discount code has expired.');
++            return;
++        }
+         // If explicitly marked redeemed OR count exceeded
+         // Fix: Don't trust isRedeemed flag alone if maxUses > 1, rely on count.
+         if (currentUses >= maxUses) {

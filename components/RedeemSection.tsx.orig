@@ -22,7 +22,7 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
     const cleanCode = code.trim();
     if (!cleanCode) return;
     setStatus('LOADING');
-    
+
     try {
         let targetCode: any = null;
         let source = 'NONE';
@@ -30,7 +30,7 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
         // 1. Check RTDB
         const codeRef = ref(rtdb, `redeem_codes/${cleanCode}`);
         const snapshot = await get(codeRef);
-        
+
         if (snapshot.exists()) {
             targetCode = snapshot.val();
             source = 'RTDB';
@@ -51,17 +51,12 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
             setMsg('Invalid Code. Please check and try again.');
             return;
         }
-        
+
         // CHECK IF REDEEMED / EXHAUSTED
         // Ensure strictly numerical comparison
         const maxUses = Number(targetCode.maxUses) || 1;
         const currentUses = Number(targetCode.usedCount) || 0;
 
-        if (targetCode.type === 'DISCOUNT' && targetCode.expiresAt && new Date(targetCode.expiresAt) < new Date()) {
-            setStatus('ERROR');
-            setMsg('This discount code has expired.');
-            return;
-        }
         // If explicitly marked redeemed OR count exceeded
         // Fix: Don't trust isRedeemed flag alone if maxUses > 1, rely on count.
         if (currentUses >= maxUses) {
@@ -153,9 +148,9 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
         }
 
         // 3. APPLY REWARD TO USER
-        let updatedUser = { 
-            ...user, 
-            redeemedCodes: [...(user.redeemedCodes || []), targetCode.code] 
+        let updatedUser = {
+            ...user,
+            redeemedCodes: [...(user.redeemedCodes || []), targetCode.code]
         };
         let successMessage = '';
 
@@ -171,7 +166,7 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
             else if (subTier === '3_MONTHLY') endDate = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
             else if (subTier === 'YEARLY') endDate = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
             else if (subTier === 'LIFETIME') endDate = new Date(now.getTime() + 365 * 10 * 24 * 60 * 60 * 1000); // 10 Years fallback
-            
+
             const isoEndDate = endDate ? endDate.toISOString() : undefined;
 
             // Handle the new ActiveSubscription model to prevent random expiry overwrites
@@ -207,7 +202,7 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
                 grantSource: 'REWARD' // Via Code
             };
             updatedUser.subscriptionHistory = [historyEntry, ...(updatedUser.subscriptionHistory || [])];
-            
+
             successMessage = `Success! Unlocked ${subTier} ${subLevel} Plan!`;
 
         } else if (targetCode.type === 'DISCOUNT') {
@@ -240,7 +235,7 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
             updatedUser.credits = (updatedUser.credits || 0) + amount;
             successMessage = `Success! Added ${amount} Premium Notes.`;
         }
-        
+
         // Save User immediately to local storage first (always succeeds)
         const allUsersStr = localStorage.getItem('nst_users');
         if (allUsersStr) {
@@ -283,7 +278,7 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
         }
 
         onSuccess(updatedUser);
-        
+
         setTimeout(() => {
             setStatus('IDLE');
             setMsg('');
@@ -318,16 +313,16 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
                     <p className="text-xs text-slate-600">Have a code from Admin? Enter it here.</p>
                 </div>
             </div>
-            
+
             <div className="relative">
-                <input 
-                    type="text" 
-                    placeholder="Enter 20-digit Code..." 
+                <input
+                    type="text"
+                    placeholder="Enter 20-digit Code..."
                     value={code}
                     onChange={e => setCode(e.target.value)}
                     className="w-full pl-4 pr-12 py-3 border-2 border-slate-100 rounded-xl font-mono text-slate-700 focus:outline-none focus:border-purple-500 transition-colors"
                 />
-                <button 
+                <button
                     onClick={handleRedeem}
                     disabled={status === 'LOADING' || !code}
                     className="absolute right-2 top-2 bottom-2 bg-purple-600 text-white p-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
@@ -341,7 +336,7 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
                     <AlertCircle size={16} /> {msg}
                 </div>
             )}
-            
+
             {status === 'SUCCESS' && (
                 <div className="mt-3 flex items-center gap-2 text-green-600 text-sm font-medium animate-in slide-in-from-top-1">
                     <CheckCircle size={16} /> {msg}
