@@ -4170,13 +4170,6 @@ export const StudentDashboard: React.FC<Props> = ({
               {effectiveMode === 'notes' && (
                 <div className="flex items-center gap-0.5 shrink-0">
                   <button
-                    onClick={() => { stopSpeech(); setHwNotesViewMode('chunk'); }}
-                    className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${hwNotesViewMode === 'chunk' ? 'bg-amber-400 text-white border-amber-400 shadow-sm' : 'bg-white/20 text-white border-white/30 hover:bg-white/30'}`}
-                    title="Read Mode"
-                  >
-                    <Volume2 size={11} /> Read
-                  </button>
-                  <button
                     onClick={() => { stopSpeech(); setHwNotesViewMode('html'); }}
                     className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${hwNotesViewMode === 'html' ? 'bg-teal-400 text-white border-teal-400 shadow-sm' : 'bg-white/20 text-white border-white/30 hover:bg-white/30'}`}
                     title="Write Mode"
@@ -7790,20 +7783,7 @@ export const StudentDashboard: React.FC<Props> = ({
 
               {/* Important Notes shortcut moved to bottom-nav (⭐ Important tab). */}
 
-              {/* SETTINGS */}
-              <button
-                onClick={() => setShowSettingsSheet(true)}
-                className="w-full p-4 flex items-center gap-3 hover:bg-slate-50 transition-colors active:bg-slate-100"
-              >
-                <div className="bg-slate-100 w-10 h-10 rounded-xl flex items-center justify-center text-slate-600 shrink-0">
-                  <Settings size={18} />
-                </div>
-                <div className="flex-1 text-left min-w-0">
-                  <p className="text-sm font-bold text-slate-800">Settings</p>
-                  <p className="text-[11px] text-slate-500">Theme, marksheets, recovery & data</p>
-                </div>
-                <ChevronRight size={16} className="text-slate-400 shrink-0" />
-              </button>
+              {/* SETTINGS REMOVED PER REQUEST */}
 
               {/* TEACHER STORE */}
               <button
@@ -8516,12 +8496,6 @@ export const StudentDashboard: React.FC<Props> = ({
                           <div>
                             <p className="text-xs font-black text-slate-700">{user.subscriptionTier || 'Free Plan'}</p>
                           </div>
-                          <button
-                            onClick={() => { onTabChange("STORE"); setShowDotsMenu(false); }}
-                            className="text-[10px] font-black bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-3 py-1.5 rounded-full"
-                          >
-                            {user.isPremium ? 'Renew' : 'Upgrade'}
-                          </button>
                         </div>
                       </div>
                       {/* Daily Downloads remaining pill */}
@@ -12058,24 +12032,6 @@ export const StudentDashboard: React.FC<Props> = ({
                   ) : (
                     fullLessonText ? (
                       <div>
-                        <button
-                          onClick={async () => {
-                            const safeTitle = (lce.lessonTitle || 'Lesson').replace(/[^a-z0-9]/gi, '_').substring(0, 40);
-                            const tempDiv = document.createElement('div');
-                            tempDiv.id = 'compare-chunk-download-temp';
-                            tempDiv.style.cssText = 'position:fixed;left:0;top:0;width:1024px;background:#fff;padding:32px;color:#0f172a;font-family:Inter,system-ui,sans-serif;font-size:15px;line-height:1.8;white-space:pre-wrap;z-index:-1;';
-                            tempDiv.textContent = fullLessonText;
-                            document.body.appendChild(tempDiv);
-                            await checkAndDoDownload(async () => {
-                              await downloadAsMHTML('compare-chunk-download-temp', safeTitle, { pageTitle: lce.lessonTitle, subtitle: 'Full Lesson Read Mode — IIC' });
-                            });
-                            setTimeout(() => { try { document.body.removeChild(tempDiv); } catch {} }, 2000);
-                          }}
-                          className="flex items-center gap-1.5 mb-2 px-3 py-1.5 rounded-lg text-[11px] font-black bg-amber-500 text-white hover:bg-amber-600 transition-all shadow-sm"
-                          data-export-hide="true"
-                        >
-                          <Download size={12} /> Download (Read Mode)
-                        </button>
                         <ChunkedNotesReader
                           key={`lesson-compare-full-${lce.id}-chunk`}
                           isUltraUser={_canViewHtmlFree}
@@ -14010,13 +13966,6 @@ export const StudentDashboard: React.FC<Props> = ({
               {/* Read / Write toggle — right next to lesson title */}
               {lucentActiveTab === 'NOTES' && (
                 <div className="flex items-center gap-0.5 shrink-0">
-                  <button
-                    onClick={() => { stopSpeech(); setLucentNotesViewMode('chunk'); }}
-                    className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${lucentNotesViewMode === 'chunk' ? 'bg-amber-400 text-white border-amber-400 shadow-sm' : 'bg-white/20 text-white border-white/30 hover:bg-white/30'}`}
-                    title="Read Mode"
-                  >
-                    <Volume2 size={11} /> Read
-                  </button>
                   <button
                     onClick={() => { stopSpeech(); setLucentNotesViewMode('html'); }}
                     className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${lucentNotesViewMode === 'html' ? 'bg-teal-400 text-white border-teal-400 shadow-sm' : 'bg-white/20 text-white border-white/30 hover:bg-white/30'}`}
