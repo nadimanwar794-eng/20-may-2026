@@ -234,6 +234,18 @@
     0%   { background-position: -200% center; }
     100% { background-position: 200% center; }
 }
+
+@keyframes badge-toggle-tier {
+    0%, 45% { opacity: 1; transform: translateY(0); }
+    50%, 95% { opacity: 0; transform: translateY(-100%); pointer-events: none; }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes badge-toggle-expiry {
+    0%, 45% { opacity: 0; transform: translateY(100%); pointer-events: none; }
+    50%, 95% { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(100%); pointer-events: none; }
+}
 @keyframes shimmer-sweep-reverse {
     0%   { background-position: 200% center; }
     100% { background-position: -200% center; }
