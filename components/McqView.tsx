@@ -208,10 +208,9 @@ export const McqView: React.FC<Props> = ({
   // NEW: MCQ Mode State (Free vs Premium Experience)
   const [mcqMode, setMcqMode] = useState<'FREE' | 'PREMIUM'>('FREE');
 
-  // Timer for Ultra users in INTERACTIVE_LIST MCQ mode — starts on first answer
+  // Timer for ALL users in INTERACTIVE_LIST MCQ mode — starts on first answer, stops on submit
   useEffect(() => {
-      const isUltra = user.isPremium && user.subscriptionLevel === 'ULTRA';
-      if (viewMode !== 'INTERACTIVE_LIST' || listMode !== 'mcq' || !listStarted || listSubmitted || !isUltra) {
+      if (viewMode !== 'INTERACTIVE_LIST' || listMode !== 'mcq' || !listStarted || listSubmitted) {
           if (listTimerRef.current) { clearInterval(listTimerRef.current); listTimerRef.current = null; }
           return;
       }
@@ -1072,10 +1071,51 @@ export const McqView: React.FC<Props> = ({
               }));
               const totalAnswered = Object.keys(listAnswers).length;
               const allAnswered = totalAnswered === norm.length && norm.length > 0;
-              // TTS reveal rule (per user spec):
-              //  - MCQ mode: only reveal answer once user answered everything.
-              //  - Q&A mode: always reveal answer in TTS.
-              const ttsRevealAnswer = listMode === 'qa' || allAnswered;
+              // TTS reveal rule: only reveal after submit in MCQ mode, always in Q&A mode
+              const ttsRevealAnswer = listMode === 'qa' || listSubmitted;
+              // Exam-mode: show 30-MCQ nudge notification
+              const show30McqNudge = listMode === 'mcq' && !listSubmitted && totalAnswered === 30 && !allAnswered;
+
+              // Submit handler: record mistakes for wrong answers only after submit
+              const handleSubmit = () => {
+                  if (listSubmitted) return;
+                  norm.forEach((q, i) => {
+                      const selected = listAnswers[i];
+                      if (selected === undefined) return;
+                      try {
+                          if (selected !== q.correctAnswer) {
+                              addMistakes([{
+                                  question: q.question,
+                                  options: q.options || [],
+                                  correctAnswer: q.correctAnswer,
+                                  explanation: q.explanation,
+                                  topic: q.topic,
+                                  chapterTitle: chapter.title,
+                                  subjectName: subject.name,
+                                  classLevel: classLevel,
+                                  board: board,
+                                  source: 'MCQ',
+                              }]);
+                          } else {
+                              removeMistakeByQuestion(q.question, q.correctAnswer);
+                          }
+                      } catch {}
+                  });
+                  setListSubmitted(true);
+                  // Auto-record revision attempt on submit
+                  try {
+                      recordRevisionAttempt({
+                          subjectId: subject.id || subject.name,
+                          subjectName: subject.name,
+                          chapterId: chapter.id,
+                          chapterTitle: chapter.title,
+                          pageKey: chapter.id,
+                          pageLabel: chapter.title,
+                          questions: norm as any,
+                          userAnswers: norm.map((_, i) => listAnswers[i] === undefined ? null : listAnswers[i]) as any,
+                      });
+                  } catch {}
+              };
               const correctCount = norm.reduce((acc, q, i) =>
                   acc + (listAnswers[i] === q.correctAnswer ? 1 : 0), 0);
               const wrongCount = totalAnswered - correctCount;
@@ -1150,11 +1190,15 @@ export const McqView: React.FC<Props> = ({
                                   )}
                               </div>
                           </div>
-                          {/* Counter row + 3-pill mode switcher */}
+                          {/* Counter row + timer + 3-pill mode switcher */}
                           <div className="px-3 pb-3 flex items-center gap-2">
-                              <div className="text-[11px] font-bold text-slate-600 shrink-0">
-                                  <span className="text-slate-800 font-black">{Math.min(totalAnswered + 1, norm.length)} / {norm.length}</span>
-                                  <span className="ml-1 text-slate-500">{norm.length} MCQs</span>
+                              <div className="text-[11px] font-bold text-slate-600 shrink-0 flex items-center gap-1.5">
+                                  <span className="text-slate-800 font-black">{totalAnswered} / {norm.length}</span>
+                                  {listMode === 'mcq' && listStarted && (
+                                      <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded-full ${listSubmitted ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                          ⏱ {Math.floor(listTimerSeconds / 60).toString().padStart(2, '0')}:{(listTimerSeconds % 60).toString().padStart(2, '0')}
+                                      </span>
+                                  )}
                               </div>
                               <div className="flex-1 flex bg-slate-100 p-0.5 rounded-full ml-2">
                                   <button
@@ -1199,12 +1243,45 @@ export const McqView: React.FC<Props> = ({
                           </div>
                       )}
 
-                      {/* MCQ mode hint when not all answered */}
-                      {listMode === 'mcq' && !allAnswered && (
-                          <div className="px-4 pt-3">
-                              <div className="bg-blue-50 border border-blue-200 rounded-2xl px-3 py-2 text-[11px] font-bold text-blue-700 text-center">
-                                  👆 Pick an answer for every question. Once you finish, the speaker will read out the answers too.
-                              </div>
+                      {/* MCQ mode hints and notifications */}
+                      {listMode === 'mcq' && !listSubmitted && (
+                          <div className="px-4 pt-3 space-y-2">
+                              {/* 30-MCQ notification: gentle nudge to submit */}
+                              {show30McqNudge && (
+                                  <div className="bg-amber-50 border border-amber-300 rounded-2xl px-3 py-2.5 text-[11px] font-bold text-amber-800 flex items-center justify-between gap-2">
+                                      <span>🎯 30 questions done! Baaki karo ya abhi submit karo.</span>
+                                      <button
+                                          onClick={handleSubmit}
+                                          className="shrink-0 bg-amber-500 text-white text-[10px] font-black px-2.5 py-1 rounded-lg active:scale-95"
+                                      >Submit</button>
+                                  </div>
+                              )}
+                              {/* Standard hint */}
+                              {!allAnswered && (
+                                  <div className="bg-blue-50 border border-blue-200 rounded-2xl px-3 py-2 text-[11px] font-bold text-blue-700 text-center">
+                                      👆 Har question ka jawab do, phir Submit karo. Galat answers automatically Mistakes mein jayenge.
+                                  </div>
+                              )}
+                              {/* All answered but not submitted */}
+                              {allAnswered && (
+                                  <button
+                                      onClick={handleSubmit}
+                                      className="w-full py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 active:scale-95"
+                                  >
+                                      ✅ Submit — Results Dekho
+                                  </button>
+                              )}
+                          </div>
+                      )}
+                      {/* MCQ mode: partial answers submit button (shows after ≥1 answer) */}
+                      {listMode === 'mcq' && !listSubmitted && totalAnswered >= 1 && !allAnswered && (
+                          <div className="px-4 pt-2">
+                              <button
+                                  onClick={handleSubmit}
+                                  className="w-full py-2.5 rounded-2xl bg-indigo-600 text-white font-black text-xs shadow-md flex items-center justify-center gap-2 active:scale-95"
+                              >
+                                  📋 Submit ({totalAnswered}/{norm.length} answered)
+                              </button>
                           </div>
                       )}
 
@@ -1215,7 +1292,8 @@ export const McqView: React.FC<Props> = ({
                               const revealed = !!listRevealed[qi];
                               const isMcq = listMode === 'mcq';
                               const answeredHere = isMcq ? selected !== undefined : revealed;
-                              const showAnswerColors = answeredHere;
+                              // MCQ exam-mode: only show correct/wrong colors AFTER submit
+                              const showAnswerColors = isMcq ? listSubmitted : answeredHere;
                               const isSaved = !!savedQuestions[qi];
 
                               return (
@@ -1281,6 +1359,9 @@ export const McqView: React.FC<Props> = ({
                                                   if (isCorrect) cls += ' bg-emerald-50 border-emerald-300 text-emerald-800';
                                                   else if (isSelected) cls += ' bg-rose-50 border-rose-300 text-rose-800';
                                                   else cls += ' bg-slate-50 border-slate-200 text-slate-500 opacity-70';
+                                              } else if (isMcq && isSelected) {
+                                                  // Selected but not yet submitted — neutral blue highlight
+                                                  cls += ' bg-indigo-50 border-indigo-400 text-indigo-900';
                                               } else {
                                                   cls += ' bg-white border-slate-200 text-slate-700' + (isMcq ? ' hover:border-indigo-300 hover:bg-indigo-50 cursor-pointer' : '');
                                               }
@@ -1290,32 +1371,15 @@ export const McqView: React.FC<Props> = ({
                                                       key={oi}
                                                       onClick={() => {
                                                           if (!isMcq) return;
-                                                          if (selected !== undefined) return;
+                                                          if (selected !== undefined || listSubmitted) return;
+                                                          // Exam mode: just record selection, NO immediate mistake tracking
                                                           setListAnswers(prev => ({ ...prev, [qi]: oi }));
-                                                          // Auto-mistake tracking: galat → add, sahi → remove
-                                                          try {
-                                                              if (oi !== q.correctAnswer) {
-                                                                  addMistakes([{
-                                                                      question: q.question,
-                                                                      options: q.options || [],
-                                                                      correctAnswer: q.correctAnswer,
-                                                                      explanation: q.explanation,
-                                                                      topic: q.topic,
-                                                                      chapterTitle: chapter.title,
-                                                                      subjectName: subject.name,
-                                                                      classLevel: classLevel,
-                                                                      board: board,
-                                                                      source: 'MCQ',
-                                                                  }]);
-                                                              } else {
-                                                                  removeMistakeByQuestion(q.question, q.correctAnswer);
-                                                              }
-                                                          } catch {}
+                                                          if (!listStarted) setListStarted(true);
                                                       }}
-                                                      disabled={!isMcq || selected !== undefined}
+                                                      disabled={!isMcq || selected !== undefined || listSubmitted}
                                                       className={cls}
                                                   >
-                                                      <span className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-black ${showAnswerColors && isCorrect ? 'bg-emerald-500 text-white border-emerald-500' : showAnswerColors && isSelected ? 'bg-rose-500 text-white border-rose-500' : 'border-slate-300 text-slate-500'}`}>
+                                                      <span className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-black ${showAnswerColors && isCorrect ? 'bg-emerald-500 text-white border-emerald-500' : showAnswerColors && isSelected ? 'bg-rose-500 text-white border-rose-500' : isMcq && isSelected ? 'bg-indigo-500 text-white border-indigo-500' : 'border-slate-300 text-slate-500'}`}>
                                                           {String.fromCharCode(65 + oi)}
                                                       </span>
                                                       <span className="flex-1">{opt}</span>
@@ -1361,19 +1425,31 @@ export const McqView: React.FC<Props> = ({
                               );
                           })}
 
-                          {/* Score Summary (MCQ mode, all answered) */}
-                          {listMode === 'mcq' && allAnswered && (
+                          {/* Score Summary — only shows AFTER submit (exam mode) */}
+                          {listMode === 'mcq' && listSubmitted && (
                               <div className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-2xl p-5 shadow-lg">
                                   <p className="text-[10px] font-black uppercase tracking-wider opacity-90 mb-1">Final Score</p>
-                                  <p className="text-3xl font-black mb-3">{Math.round((correctCount / norm.length) * 100)}%</p>
-                                  <div className="grid grid-cols-3 gap-2 text-center text-xs font-bold">
+                                  <p className="text-3xl font-black mb-1">{Math.round((correctCount / Math.max(totalAnswered, 1)) * 100)}%</p>
+                                  <p className="text-[10px] opacity-75 mb-3">⏱ Time: {Math.floor(listTimerSeconds / 60).toString().padStart(2,'0')}:{(listTimerSeconds % 60).toString().padStart(2,'0')}</p>
+                                  <div className="grid grid-cols-3 gap-2 text-center text-xs font-bold mb-4">
                                       <div className="bg-white/15 rounded-xl py-2"><div className="text-[10px] opacity-80">Attempted</div><div className="text-base">{totalAnswered}</div></div>
-                                      <div className="bg-white/15 rounded-xl py-2"><div className="text-[10px] opacity-80">Correct</div><div className="text-base">{correctCount}</div></div>
-                                      <div className="bg-white/15 rounded-xl py-2"><div className="text-[10px] opacity-80">Wrong</div><div className="text-base">{wrongCount}</div></div>
+                                      <div className="bg-white/15 rounded-xl py-2"><div className="text-[10px] opacity-80">✅ Correct</div><div className="text-base">{correctCount}</div></div>
+                                      <div className="bg-white/15 rounded-xl py-2"><div className="text-[10px] opacity-80">❌ Wrong</div><div className="text-base">{wrongCount}</div></div>
                                   </div>
+                                  {wrongCount > 0 && (
+                                      <div className="bg-white/20 rounded-xl px-3 py-2 text-[11px] font-bold mb-3 text-center">
+                                          📌 {wrongCount} galat questions Mistakes page mein save ho gaye
+                                      </div>
+                                  )}
                                   <button
-                                      onClick={() => { setListAnswers({}); }}
-                                      className="mt-4 w-full py-2.5 rounded-xl bg-white text-indigo-700 font-black text-xs flex items-center justify-center gap-2 active:scale-95"
+                                      onClick={() => {
+                                          setListAnswers({});
+                                          setListRevealed({});
+                                          setListSubmitted(false);
+                                          setListTimerSeconds(0);
+                                          setListStarted(false);
+                                      }}
+                                      className="w-full py-2.5 rounded-xl bg-white text-indigo-700 font-black text-xs flex items-center justify-center gap-2 active:scale-95"
                                   >
                                       <RefreshCw size={14}/> Phir se Try Karo
                                   </button>

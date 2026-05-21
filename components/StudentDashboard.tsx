@@ -43,7 +43,9 @@ import { ALL_FEATURES } from "../utils/featureRegistry";
 import { useAppLang, tApp } from "../utils/appLang";
 import { isHomeSectionVisible } from "../utils/homeSections";
 import { checkFeatureAccess } from "../utils/permissionUtils";
-import { downloadAsMHTML } from "../utils/downloadUtils";
+import { downloadAsMHTML, downloadAsHTML, downloadElementAsHTML } from "../utils/downloadUtils";
+import { recordLogin, updateSessionDuration, getLoginHistory, formatDuration, formatLoginTime, type LoginSession } from "../utils/loginHistory";
+import { getNewContentItems, markContentItemSeen, markAllContentItemsSeen, formatContentDate, type ContentNotifItem } from "../utils/contentNotifications";
 import { saveRecentHomework, getRecentHomeworks, removeRecentHomework, getRecentChapters, removeRecentChapter, saveRecentLucent, getRecentLucent, removeRecentLucent, markNoteFullyRead, getFullyReadMap, markReadToday, getReadingStreak, getReadDates, getBestReadingDay, getTodayItemCount, type RecentChapterEntry, type RecentHwEntry, type RecentLucentEntry, type StreakInfo, type BestDay } from "../utils/recentReads";
 import { SubscriptionEngine } from "../utils/engines/subscriptionEngine";
 import { RewardEngine } from "../utils/engines/rewardEngine";
@@ -474,6 +476,25 @@ export const StudentDashboard: React.FC<Props> = ({
     return getFeatureAccess(featureId).hasAccess;
   };
 
+  // ── LOGIN SESSION TRACKING ────────────────────────────────────────────────
+  // Record login on mount, update duration on unmount or page-hide
+  useEffect(() => {
+    if (!user?.id) return;
+    recordLogin(user.id);
+    const handleHide = () => { try { updateSessionDuration(user.id); } catch {} };
+    window.addEventListener('pagehide', handleHide);
+    window.addEventListener('beforeunload', handleHide);
+    // Update duration every 2 min so last-seen time is fresh even without unload
+    const t = setInterval(() => { try { updateSessionDuration(user.id); } catch {} }, 2 * 60 * 1000);
+    return () => {
+      handleHide();
+      clearInterval(t);
+      window.removeEventListener('pagehide', handleHide);
+      window.removeEventListener('beforeunload', handleHide);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
   // ── BASIC USER: HTML Write-Mode Daily Quota ──────────────────────────────
   const _isUltraUser   = user.isPremium && user.subscriptionLevel === 'ULTRA';
   const _isBasicUser   = user.isPremium && user.subscriptionLevel === 'BASIC';
@@ -490,6 +511,45 @@ export const StudentDashboard: React.FC<Props> = ({
   const _trackBasicHtmlOpen = () => {
     if (!_isBasicUser) return;
     localStorage.setItem(_basicHtmlKey, String(_basicHtmlUsed + 1));
+  };
+
+  // ── NEW CONTENT NOTIFICATIONS (Lucent / Competition pages) ───────────────
+  const _allLucentNotes = (settings?.lucentNotes || []) as LucentNoteEntry[];
+  const _newContentItems: ContentNotifItem[] = getNewContentItems(_allLucentNotes, user.id, 7);
+  const _newContentFiltered = _newContentItems.filter(item => {
+    if (item.requiredTier === 'ULTRA') return _isUltraUser || user.role === 'ADMIN';
+    if (item.requiredTier === 'BASIC') return _isUltraUser || _isBasicUser || user.role === 'ADMIN';
+    return true;
+  });
+  const _newContentCount = _newContentFiltered.length;
+
+  // ── HTML DOWNLOAD DAILY LIMITS ────────────────────────────────────────────
+  // Free=2/day, Basic=5/day, Ultra=10/day
+  const _dlHtmlKey   = `nst_dl_html_${user.id}_${_todayKey}`;
+  const _dlHtmlUsed  = parseInt(localStorage.getItem(_dlHtmlKey) || '0', 10);
+  const _dlHtmlLimit = user.role === 'ADMIN' ? 9999
+    : _isUltraUser ? (settings?.htmlDownloadLimitUltra ?? 10)
+    : _isBasicUser ? (settings?.htmlDownloadLimitBasic ?? 5)
+    : (settings?.htmlDownloadLimitFree ?? 2);
+  const _dlHtmlLeft  = Math.max(0, _dlHtmlLimit - _dlHtmlUsed);
+
+  /**
+   * Wraps any download call with daily limit enforcement.
+   * Returns false if blocked (limit hit), true if allowed.
+   */
+  const checkAndDoDownload = async (downloadFn: () => Promise<void> | void): Promise<boolean> => {
+    if (user.role === 'ADMIN') { await downloadFn(); return true; }
+    if (_dlHtmlUsed >= _dlHtmlLimit) {
+      showAlert(
+        `Aaj ke ${_dlHtmlLimit} HTML download complete ho gaye! 🔒 Kal vapas aao ya plan upgrade karo.\n\n` +
+        `Free: 2/day · Basic: 5/day · Ultra: 10/day`,
+        'WARNING'
+      );
+      return false;
+    }
+    try { localStorage.setItem(_dlHtmlKey, String(_dlHtmlUsed + 1)); } catch {}
+    await downloadFn();
+    return true;
   };
 
   // === DISCOUNT EVENT LIVE / COOLDOWN STATE ===
@@ -1222,6 +1282,8 @@ export const StudentDashboard: React.FC<Props> = ({
   const [showDotsMenu, setShowDotsMenu] = useState(false);
   const [showFeatureLimitsModal, setShowFeatureLimitsModal] = useState(false);
   const [showRulesPage, setShowRulesPage] = useState(false);
+  const [showLoginHistory, setShowLoginHistory] = useState(false);
+  const [showContentNewSheet, setShowContentNewSheet] = useState(false);
   const [showCreditsMini, setShowCreditsMini] = useState(false);
   const [storeSubTab, setStoreSubTab] = useState<'STORE' | 'EARN'>('STORE');
   const [inboxTab, setInboxTab] = useState<'MESSAGES' | 'UPDATES' | 'REWARDS'>('MESSAGES');
@@ -4140,12 +4202,14 @@ export const StudentDashboard: React.FC<Props> = ({
                 onClick={async () => {
                   try {
                     const safeTitle = (activeHw.title || 'Homework').replace(/[^a-z0-9_\- ]/gi, '_').slice(0, 60);
-                    if (hwNotesViewMode === 'html' && (activeHw as any).htmlNotes) {
-                      await downloadAsMHTML('hw-html-download', safeTitle, { appName: settings?.appShortName || settings?.appName || 'IIC', pageTitle: activeHw.title || 'Homework', subtitle: 'Homework Notes — Write Mode' });
-                    } else {
-                      await downloadAsMHTML('hw-note-printable', `${safeTitle}_${new Date().toISOString().slice(0,10)}`, { appName: settings?.appShortName || settings?.appName || 'IIC', pageTitle: activeHw.title || 'Homework', subtitle: 'Homework Notes' });
-                    }
-                    showAlert('📥 Saved!', 'SUCCESS');
+                    const _dlOk = await checkAndDoDownload(async () => {
+                      if (hwNotesViewMode === 'html' && (activeHw as any).htmlNotes) {
+                        await downloadAsMHTML('hw-html-download', safeTitle, { appName: settings?.appShortName || settings?.appName || 'IIC', pageTitle: activeHw.title || 'Homework', subtitle: 'Homework Notes — Write Mode' });
+                      } else {
+                        await downloadAsMHTML('hw-note-printable', `${safeTitle}_${new Date().toISOString().slice(0,10)}`, { appName: settings?.appShortName || settings?.appName || 'IIC', pageTitle: activeHw.title || 'Homework', subtitle: 'Homework Notes' });
+                      }
+                    });
+                    if (_dlOk) showAlert('📥 Saved!', 'SUCCESS');
                   } catch (e) {
                     showAlert('Download failed. Please try again.', 'ERROR');
                   }
@@ -5889,10 +5953,12 @@ export const StudentDashboard: React.FC<Props> = ({
                                     wrapper.style.left = '-9999px';
                                     document.body.appendChild(wrapper);
                                     const fname = (entry.chapter?.title || 'chapter').slice(0,40).replace(/[^a-z0-9]+/gi,'_');
-                                    await downloadAsMHTML(wrapper.id, `${fname}_${new Date().toISOString().slice(0,10)}`, {
-                                      appName: settings?.appShortName || settings?.appName || 'IIC',
-                                      pageTitle: entry.chapter?.title || 'Chapter',
-                                      subtitle: `Class ${entry.classLevel || ''} · ${entry.subject?.name || ''}`.trim(),
+                                    await checkAndDoDownload(async () => {
+                                      await downloadAsMHTML(wrapper.id, `${fname}_${new Date().toISOString().slice(0,10)}`, {
+                                        appName: settings?.appShortName || settings?.appName || 'IIC',
+                                        pageTitle: entry.chapter?.title || 'Chapter',
+                                        subtitle: `Class ${entry.classLevel || ''} · ${entry.subject?.name || ''}`.trim(),
+                                      });
                                     });
                                     setTimeout(() => { try { document.body.removeChild(wrapper); } catch {} }, 500);
                                   } catch (err) { console.error(err); }
@@ -8353,12 +8419,13 @@ export const StudentDashboard: React.FC<Props> = ({
                 title="Mail & Notifications"
               >
                 <Mail size={16} />
-                {(unreadCount + unreadNotifCount) > 0 && (
+                {(unreadCount + unreadNotifCount + _newContentCount) > 0 && (
                   <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 bg-red-500 rounded-full text-[9px] text-white font-black flex items-center justify-center animate-bounce">
-                    {(unreadCount + unreadNotifCount) > 9 ? '9+' : (unreadCount + unreadNotifCount)}
+                    {(unreadCount + unreadNotifCount + _newContentCount) > 9 ? '9+' : (unreadCount + unreadNotifCount + _newContentCount)}
                   </span>
                 )}
               </button>
+
 
               {/* 3-DOT MENU BUTTON — in first line, after Mail */}
               <div className="relative shrink-0">
@@ -8462,8 +8529,17 @@ export const StudentDashboard: React.FC<Props> = ({
                           </button>
                         </div>
                       </div>
+                      {/* Daily Downloads remaining pill */}
+                      <div className="px-4 pt-2 pb-1">
+                        <div className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2 text-[10px] font-bold text-slate-600 border border-slate-100">
+                          <span>📥 HTML Downloads today</span>
+                          <span className={`font-black ${_dlHtmlLeft === 0 ? 'text-rose-600' : _dlHtmlLeft <= 2 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                            {_dlHtmlLeft}/{_dlHtmlLimit} left
+                          </span>
+                        </div>
+                      </div>
                       {/* Feature Limits & Daily Usage */}
-                      <div className="px-4 pt-2 pb-2">
+                      <div className="px-4 pt-1 pb-1">
                         <button
                           onClick={() => { setShowFeatureLimitsModal(true); setShowDotsMenu(false); }}
                           className="w-full flex items-center gap-2 p-2.5 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 text-emerald-700 hover:from-emerald-100 hover:to-teal-100 font-bold text-xs transition-all"
@@ -8474,7 +8550,7 @@ export const StudentDashboard: React.FC<Props> = ({
                         </button>
                       </div>
                       {/* Rules Page Link */}
-                      <div className="px-4 pt-0 pb-4">
+                      <div className="px-4 pt-1 pb-1">
                         <button
                           onClick={() => { setShowRulesPage(true); setShowDotsMenu(false); }}
                           className="w-full flex items-center gap-2 p-2.5 rounded-xl bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200 text-violet-700 hover:from-violet-100 hover:to-indigo-100 font-bold text-xs transition-all"
@@ -8482,6 +8558,17 @@ export const StudentDashboard: React.FC<Props> = ({
                           <span className="text-base">📋</span>
                           <span className="flex-1 text-left">Feature Rules — Free / Basic / Ultra</span>
                           <span className="text-[10px] text-violet-400">→</span>
+                        </button>
+                      </div>
+                      {/* Login History */}
+                      <div className="px-4 pt-1 pb-4">
+                        <button
+                          onClick={() => { setShowLoginHistory(true); setShowDotsMenu(false); }}
+                          className="w-full flex items-center gap-2 p-2.5 rounded-xl bg-gradient-to-r from-blue-50 to-sky-50 border border-blue-200 text-blue-700 hover:from-blue-100 hover:to-sky-100 font-bold text-xs transition-all"
+                        >
+                          <span className="text-base">🕐</span>
+                          <span className="flex-1 text-left">Login History</span>
+                          <span className="text-[10px] text-blue-400">→</span>
                         </button>
                       </div>
                     </div>
@@ -10448,12 +10535,14 @@ export const StudentDashboard: React.FC<Props> = ({
                   <button
                     onClick={async () => {
                       try {
-                        await downloadAsMHTML('comp-mcq-printable', `Competition_MCQs_${new Date().toISOString().slice(0,10)}`, {
-                          appName: settings?.appShortName || settings?.appName || 'IIC',
-                          pageTitle: 'Competition MCQs',
-                          subtitle: `Practice MCQ Maker · ${allMcqs.length} questions`,
+                        const _dlOkComp = await checkAndDoDownload(async () => {
+                          await downloadAsMHTML('comp-mcq-printable', `Competition_MCQs_${new Date().toISOString().slice(0,10)}`, {
+                            appName: settings?.appShortName || settings?.appName || 'IIC',
+                            pageTitle: 'Competition MCQs',
+                            subtitle: `Practice MCQ Maker · ${allMcqs.length} questions`,
+                          });
                         });
-                        showAlert(`📥 ${allMcqs.length} MCQs offline save ho gaye!`, 'SUCCESS');
+                        if (_dlOkComp) showAlert(`📥 ${allMcqs.length} MCQs offline save ho gaye!`, 'SUCCESS');
                       } catch (e) {
                         showAlert('Download failed. Please try again.', 'ERROR');
                       }
@@ -11935,7 +12024,9 @@ export const StudentDashboard: React.FC<Props> = ({
                         <button
                           onClick={async () => {
                             const safeTitle = (lce.lessonTitle || 'Lesson').replace(/[^a-z0-9]/gi, '_').substring(0, 40);
-                            await downloadAsMHTML('compare-html-download', safeTitle, { pageTitle: lce.lessonTitle, subtitle: 'Full Lesson — IIC' });
+                            await checkAndDoDownload(async () => {
+                              await downloadAsMHTML('compare-html-download', safeTitle, { pageTitle: lce.lessonTitle, subtitle: 'Full Lesson — IIC' });
+                            });
                           }}
                           className="flex items-center gap-1.5 mb-2 px-3 py-1.5 rounded-lg text-[11px] font-black bg-teal-600 text-white hover:bg-teal-700 transition-all shadow-sm"
                           data-export-hide="true"
@@ -11964,7 +12055,9 @@ export const StudentDashboard: React.FC<Props> = ({
                             tempDiv.style.cssText = 'position:fixed;left:0;top:0;width:1024px;background:#fff;padding:32px;color:#0f172a;font-family:Inter,system-ui,sans-serif;font-size:15px;line-height:1.8;white-space:pre-wrap;z-index:-1;';
                             tempDiv.textContent = fullLessonText;
                             document.body.appendChild(tempDiv);
-                            await downloadAsMHTML('compare-chunk-download-temp', safeTitle, { pageTitle: lce.lessonTitle, subtitle: 'Full Lesson Read Mode — IIC' });
+                            await checkAndDoDownload(async () => {
+                              await downloadAsMHTML('compare-chunk-download-temp', safeTitle, { pageTitle: lce.lessonTitle, subtitle: 'Full Lesson Read Mode — IIC' });
+                            });
                             setTimeout(() => { try { document.body.removeChild(tempDiv); } catch {} }, 2000);
                           }}
                           className="flex items-center gap-1.5 mb-2 px-3 py-1.5 rounded-lg text-[11px] font-black bg-amber-500 text-white hover:bg-amber-600 transition-all shadow-sm"
@@ -13450,62 +13543,144 @@ export const StudentDashboard: React.FC<Props> = ({
               })()}
 
               {inboxTab === 'UPDATES' && (() => {
-                if (allNotifications.length === 0) return (
+                const subjectIcon: Record<string, string> = {
+                  biology: '🧬', chemistry: '⚗️', physics: '⚛️', economics: '📈',
+                  geography: '🌏', polity: '⚖️', history: '📜',
+                };
+                const tierLabel = (t: string) => t === 'ULTRA' ? '⚡ Ultra' : t === 'BASIC' ? '🔵 Basic' : '🆓 Free';
+                const tierColor = (t: string) => t === 'ULTRA' ? 'bg-violet-100 text-violet-700' : t === 'BASIC' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700';
+
+                const handleContentItemClick = (item: ContentNotifItem) => {
+                  const entry = _allLucentNotes.find(e => e.id === item.entryId);
+                  if (!entry) { showAlert('Content nahi mila. Refresh karein.', 'ERROR'); return; }
+                  if (item.requiredTier === 'ULTRA' && !_isUltraUser && user.role !== 'ADMIN') {
+                    showAlert('यह content Ultra plan mein available hai! Store se upgrade karein. ⚡', 'INFO');
+                    return;
+                  }
+                  if (item.requiredTier === 'BASIC' && !_isBasicUser && !_isUltraUser && user.role !== 'ADMIN') {
+                    showAlert('यह content Basic / Ultra plan mein available hai! Store se upgrade karein. 🔵', 'INFO');
+                    return;
+                  }
+                  markContentItemSeen(user.id, item.id);
+                  setLucentNoteViewer(entry);
+                  setLucentPageListViewer(entry);
+                  setLucentPageIndex(item.pageIndex);
+                  setShowInbox(false);
+                };
+
+                if (allNotifications.length === 0 && _newContentFiltered.length === 0) return (
                   <div className="text-center py-14 flex flex-col items-center">
                     <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 text-slate-300"><Bell size={32} /></div>
                     <p className="text-slate-500 font-bold text-sm">Koi update nahi</p>
                     <p className="text-slate-400 text-xs mt-1">Admin ke announcements yahan aayenge</p>
                   </div>
                 );
-                return allNotifications.map(n => {
-                  const isClaimed = claimedNotifIds.includes(n.id);
-                  const isUnread = !seenNotifIds.includes(n.id);
-                  return (
-                    <div key={n.id} className={`rounded-2xl border p-4 flex items-start gap-3 ${n.type === 'reward' ? 'bg-amber-50 border-amber-200' : n.type === 'CONTENT' ? (isUnread ? 'bg-teal-50 border-teal-200' : 'bg-white border-slate-200') : isUnread ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-200'}`}>
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${n.type === 'reward' ? 'bg-amber-200 text-amber-700' : n.type === 'CONTENT' ? 'bg-teal-100 text-teal-700' : 'bg-indigo-200 text-indigo-700'}`}>
-                        {n.type === 'reward' ? <Gift size={18} /> : n.type === 'CONTENT' ? <BookOpen size={18} /> : <Bell size={18} />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <p className="font-black text-sm text-slate-800">{n.title}</p>
-                          {isUnread && <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0"></span>}
-                        </div>
-                        <p className="text-xs text-slate-600 leading-relaxed">{n.body}</p>
-                        {n.type === 'reward' && n.rewardCredits && (
-                          <div className="mt-2">
-                            {isClaimed ? (
-                              <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-2.5 py-1 rounded-full">✓ Claimed {n.rewardCredits} CR</span>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  const ids = [...claimedNotifIds, n.id];
-                                  setClaimedNotifIds(ids);
-                                  try { localStorage.setItem('nst_claimed_notifs_v1', JSON.stringify(ids)); } catch {}
-                                  const updated = { ...user, credits: (user.credits || 0) + (n.rewardCredits || 0) };
-                                  handleUserUpdate(updated);
-                                }}
-                                className="text-[11px] font-black bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-1.5 rounded-full active:scale-95 transition-transform flex items-center gap-1.5"
-                              >
-                                <Crown size={11} /> Claim {n.rewardCredits} CR
-                              </button>
-                            )}
-                          </div>
-                        )}
-                        <p className="text-[9px] text-slate-400 mt-1.5 font-semibold">
-                          {(() => { try { return new Date(n.createdAt).toLocaleString('default', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } })()}
+
+                return (
+                  <>
+                    {/* ── New Content Items (Lucent / Competition pages) ── */}
+                    {_newContentFiltered.length > 0 && (
+                      <div className="mb-2">
+                        <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest px-1 mb-2 flex items-center gap-1.5">
+                          <span className="w-4 h-4 bg-amber-100 rounded-full flex items-center justify-center text-[9px]">🆕</span>
+                          Naya Content — Last 7 din
                         </p>
+                        {_newContentFiltered.map(item => {
+                          const locked = (item.requiredTier === 'ULTRA' && !_isUltraUser && user.role !== 'ADMIN')
+                            || (item.requiredTier === 'BASIC' && !_isBasicUser && !_isUltraUser && user.role !== 'ADMIN');
+                          return (
+                            <button
+                              key={item.id}
+                              onClick={() => handleContentItemClick(item)}
+                              className={`w-full text-left flex items-start gap-3 rounded-2xl p-3.5 mb-2 border transition-all active:scale-[.99] ${locked ? 'bg-slate-50 border-slate-200 opacity-75' : 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 hover:from-amber-100 hover:to-orange-100'}`}
+                            >
+                              <div className="w-9 h-9 rounded-xl bg-white border border-amber-200 flex items-center justify-center shrink-0 text-base shadow-sm">
+                                {subjectIcon[item.subject] || '📖'}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                                  <span className="text-[10px] font-black text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">📚 {item.bookName}</span>
+                                  <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${tierColor(item.requiredTier)}`}>{tierLabel(item.requiredTier)}</span>
+                                  <span className="text-[10px] text-slate-400 font-medium">{formatContentDate(item.date)}</span>
+                                </div>
+                                <p className="text-sm font-black text-slate-800 truncate">{item.lessonTitle}</p>
+                                <p className="text-[11px] text-slate-500 font-medium">
+                                  Page {item.pageNo} · {item.classLevel === 'COMPETITION' || !item.classLevel ? 'Competition' : `Class ${item.classLevel}`}
+                                </p>
+                              </div>
+                              <div className="shrink-0 self-center">
+                                {locked
+                                  ? <span className="text-[10px] font-black text-violet-600 bg-violet-100 px-2 py-1 rounded-lg">Upgrade</span>
+                                  : <span className="text-amber-400 font-black text-sm">→</span>
+                                }
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
-                      <button onClick={(e) => {
-                        e.stopPropagation();
-                        const hidden = [...hiddenNotifs, n.id];
-                        setHiddenNotifs(hidden);
-                        try { localStorage.setItem('nst_hidden_notifs', JSON.stringify(hidden)); } catch {}
-                      }} className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 shrink-0 self-center">
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  );
-                });
+                    )}
+
+                    {/* ── Admin Announcements ── */}
+                    {allNotifications.length > 0 && (
+                      <>
+                        {_newContentFiltered.length > 0 && (
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 mb-2 mt-1 flex items-center gap-1.5">
+                            <Bell size={10} /> Admin Announcements
+                          </p>
+                        )}
+                        {allNotifications.map(n => {
+                          const isClaimed = claimedNotifIds.includes(n.id);
+                          const isUnread = !seenNotifIds.includes(n.id);
+                          return (
+                            <div key={n.id} className={`rounded-2xl border p-4 flex items-start gap-3 mb-2 ${n.type === 'reward' ? 'bg-amber-50 border-amber-200' : n.type === 'CONTENT' ? (isUnread ? 'bg-teal-50 border-teal-200' : 'bg-white border-slate-200') : isUnread ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-200'}`}>
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${n.type === 'reward' ? 'bg-amber-200 text-amber-700' : n.type === 'CONTENT' ? 'bg-teal-100 text-teal-700' : 'bg-indigo-200 text-indigo-700'}`}>
+                                {n.type === 'reward' ? <Gift size={18} /> : n.type === 'CONTENT' ? <BookOpen size={18} /> : <Bell size={18} />}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <p className="font-black text-sm text-slate-800">{n.title}</p>
+                                  {isUnread && <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0"></span>}
+                                </div>
+                                <p className="text-xs text-slate-600 leading-relaxed">{n.body}</p>
+                                {n.type === 'reward' && n.rewardCredits && (
+                                  <div className="mt-2">
+                                    {isClaimed ? (
+                                      <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-2.5 py-1 rounded-full">✓ Claimed {n.rewardCredits} CR</span>
+                                    ) : (
+                                      <button
+                                        onClick={() => {
+                                          const ids = [...claimedNotifIds, n.id];
+                                          setClaimedNotifIds(ids);
+                                          try { localStorage.setItem('nst_claimed_notifs_v1', JSON.stringify(ids)); } catch {}
+                                          const updated = { ...user, credits: (user.credits || 0) + (n.rewardCredits || 0) };
+                                          handleUserUpdate(updated);
+                                        }}
+                                        className="text-[11px] font-black bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-1.5 rounded-full active:scale-95 transition-transform flex items-center gap-1.5"
+                                      >
+                                        <Crown size={11} /> Claim {n.rewardCredits} CR
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                                <p className="text-[9px] text-slate-400 mt-1.5 font-semibold">
+                                  {(() => { try { return new Date(n.createdAt).toLocaleString('default', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } })()}
+                                </p>
+                              </div>
+                              <button onClick={(e) => {
+                                e.stopPropagation();
+                                const hidden = [...hiddenNotifs, n.id];
+                                setHiddenNotifs(hidden);
+                                try { localStorage.setItem('nst_hidden_notifs', JSON.stringify(hidden)); } catch {}
+                              }} className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 shrink-0 self-center">
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+                  </>
+                );
               })()}
             </div>
 
@@ -13516,12 +13691,13 @@ export const StudentDashboard: React.FC<Props> = ({
                   Sab padha hua mark karo
                 </button>
               )}
-              {inboxTab === 'UPDATES' && unreadNotifCount > 0 && (
+              {inboxTab === 'UPDATES' && (unreadNotifCount + _newContentCount) > 0 && (
                 <button
                   onClick={() => {
                     const ids = allNotifications.map(n => n.id);
                     setSeenNotifIds(prev => [...new Set([...prev, ...ids])]);
                     try { localStorage.setItem('nst_seen_notif_ids', JSON.stringify([...seenNotifIds, ...ids])); } catch {}
+                    markAllContentItemsSeen(user.id, _newContentFiltered.map(i => i.id));
                   }}
                   className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition-colors"
                 >
@@ -13861,20 +14037,22 @@ export const StudentDashboard: React.FC<Props> = ({
                     try {
                       const safeTitle = `${entry.lessonTitle || 'Lucent'}_pg${currentPage?.pageNo || safeIndex + 1}`
                         .replace(/[^a-z0-9_\- ]/gi, '_').slice(0, 60);
-                      if (lucentNotesViewMode === 'html' && (currentPage?.htmlNotes || currentPage?.content)) {
-                        await downloadAsMHTML('lucent-html-download', safeTitle, {
-                          appName: settings?.appShortName || settings?.appName || 'IIC',
-                          pageTitle: `${entry.lessonTitle || 'Lucent'} · Page ${currentPage?.pageNo || safeIndex + 1}`,
-                          subtitle: 'Lucent Notes — Write Mode',
-                        });
-                      } else {
-                        await downloadAsMHTML('lucent-note-printable', `${safeTitle}_${new Date().toISOString().slice(0,10)}`, {
-                          appName: settings?.appShortName || settings?.appName || 'IIC',
-                          pageTitle: `${entry.lessonTitle || 'Lucent'} · Page ${currentPage?.pageNo || safeIndex + 1}`,
-                          subtitle: 'Lucent Notes',
-                        });
-                      }
-                      showAlert('📥 Saved!', 'SUCCESS');
+                      const _dlOkLuc = await checkAndDoDownload(async () => {
+                        if (lucentNotesViewMode === 'html' && (currentPage?.htmlNotes || currentPage?.content)) {
+                          await downloadAsMHTML('lucent-html-download', safeTitle, {
+                            appName: settings?.appShortName || settings?.appName || 'IIC',
+                            pageTitle: `${entry.lessonTitle || 'Lucent'} · Page ${currentPage?.pageNo || safeIndex + 1}`,
+                            subtitle: 'Lucent Notes — Write Mode',
+                          });
+                        } else {
+                          await downloadAsMHTML('lucent-note-printable', `${safeTitle}_${new Date().toISOString().slice(0,10)}`, {
+                            appName: settings?.appShortName || settings?.appName || 'IIC',
+                            pageTitle: `${entry.lessonTitle || 'Lucent'} · Page ${currentPage?.pageNo || safeIndex + 1}`,
+                            subtitle: 'Lucent Notes',
+                          });
+                        }
+                      });
+                      if (_dlOkLuc) showAlert('📥 Saved!', 'SUCCESS');
                     } catch (e) {
                       showAlert('Download failed. Please try again.', 'ERROR');
                     }
@@ -14268,12 +14446,14 @@ RULES:
                             try {
                               const safeTitle = `${entry.lessonTitle || 'Lucent'}_pg${currentPage?.pageNo || safeIndex + 1}_MCQs`
                                 .replace(/[^a-z0-9_\- ]/gi, '_').slice(0, 60);
-                              await downloadAsMHTML('lucent-mcq-printable', `${safeTitle}_${new Date().toISOString().slice(0,10)}`, {
-                                appName: settings?.appShortName || settings?.appName || 'IIC',
-                                pageTitle: `${entry.lessonTitle || 'Lucent'} · Page ${currentPage?.pageNo || safeIndex + 1} MCQs`,
-                                subtitle: `Lucent MCQs · ${mcqs.length} questions`,
+                              const _dlOkMcq = await checkAndDoDownload(async () => {
+                                await downloadAsMHTML('lucent-mcq-printable', `${safeTitle}_${new Date().toISOString().slice(0,10)}`, {
+                                  appName: settings?.appShortName || settings?.appName || 'IIC',
+                                  pageTitle: `${entry.lessonTitle || 'Lucent'} · Page ${currentPage?.pageNo || safeIndex + 1} MCQs`,
+                                  subtitle: `Lucent MCQs · ${mcqs.length} questions`,
+                                });
                               });
-                              showAlert(`📥 ${mcqs.length} MCQs saved offline!`, 'SUCCESS');
+                              if (_dlOkMcq) showAlert(`📥 ${mcqs.length} MCQs saved offline!`, 'SUCCESS');
                             } catch (e) {
                               showAlert('Download failed. Please try again.', 'ERROR');
                             }
@@ -14536,12 +14716,14 @@ RULES:
               onClick={async () => {
                 try {
                   const safeTitle = (activePlayerHw.title || 'Homework_MCQ').replace(/[^a-z0-9_\- ]/gi, '_').slice(0, 60);
-                  await downloadAsMHTML('hw-note-printable', `${safeTitle}_${new Date().toISOString().slice(0,10)}`, {
-                    appName: settings?.appShortName || settings?.appName || 'IIC',
-                    pageTitle: activePlayerHw.title || 'Homework MCQ',
-                    subtitle: 'Homework MCQs',
+                  const _dlOkHwMcq = await checkAndDoDownload(async () => {
+                    await downloadAsMHTML('hw-note-printable', `${safeTitle}_${new Date().toISOString().slice(0,10)}`, {
+                      appName: settings?.appShortName || settings?.appName || 'IIC',
+                      pageTitle: activePlayerHw.title || 'Homework MCQ',
+                      subtitle: 'Homework MCQs',
+                    });
                   });
-                  showAlert('📥 Saved offline!', 'SUCCESS');
+                  if (_dlOkHwMcq) showAlert('📥 Saved offline!', 'SUCCESS');
                 } catch (e) {
                   showAlert('Download failed. Please try again.', 'ERROR');
                 }
@@ -15520,10 +15702,12 @@ RULES:
                             wrapper.style.left = '-9999px';
                             document.body.appendChild(wrapper);
                             const safeTitle = note.topicText.slice(0,40).replace(/[^a-z0-9]+/gi,'_');
-                            await downloadAsMHTML('imp-note-printable', `Important_${safeTitle}_${new Date().toISOString().slice(0,10)}`, {
-                              appName: settings?.appShortName || settings?.appName || 'IIC',
-                              pageTitle: `Important · ${note.topicText.slice(0, 60)}`,
-                              subtitle: 'Important Notes',
+                            await checkAndDoDownload(async () => {
+                              await downloadAsMHTML('imp-note-printable', `Important_${safeTitle}_${new Date().toISOString().slice(0,10)}`, {
+                                appName: settings?.appShortName || settings?.appName || 'IIC',
+                                pageTitle: `Important · ${note.topicText.slice(0, 60)}`,
+                                subtitle: 'Important Notes',
+                              });
                             });
                             setTimeout(() => { try { document.body.removeChild(wrapper); } catch {} }, 500);
                           } catch (err) { console.error(err); }
@@ -16379,6 +16563,7 @@ RULES:
         const mcqToday = parseInt(localStorage.getItem(`nst_mcq_daily_total_${todayStr}_${user.id}`) || '0', 10);
         const htmlSessions = parseInt(localStorage.getItem(`nst_basic_html_${user.id}_${todayStr}`) || '0', 10);
         const storeVisits = parseInt(localStorage.getItem(`nst_store_visits_${user.id}_${todayStr}`) || '0', 10);
+        const dlHtmlToday = parseInt(localStorage.getItem(`nst_dl_html_${user.id}_${todayStr}`) || '0', 10);
 
         const htmlCost = settings?.htmlUnlockCost ?? 5;
         const basicHtmlLimit = settings?.basicHtmlDailyLimit ?? 3;
@@ -16386,6 +16571,9 @@ RULES:
 
         const mcqLimit = isUltra ? null : isBasic ? null : 50;
         const mcqLeft = mcqLimit !== null ? Math.max(0, mcqLimit - mcqToday) : null;
+
+        const dlLimit = isUltra ? (settings?.htmlDownloadLimitUltra ?? 10) : isBasic ? (settings?.htmlDownloadLimitBasic ?? 5) : (settings?.htmlDownloadLimitFree ?? 2);
+        const dlLeft  = Math.max(0, dlLimit - dlHtmlToday);
 
         type LimitRow = { icon: string; label: string; limit: string; used: string; statusColor: string };
         const rows: LimitRow[] = [
@@ -16397,11 +16585,18 @@ RULES:
             statusColor: mcqLeft === 0 ? 'text-rose-600' : mcqLeft !== null && mcqLeft <= 10 ? 'text-amber-600' : 'text-emerald-600',
           },
           {
+            icon: '📥',
+            label: 'HTML Downloads',
+            limit: `${dlLimit}/day`,
+            used: `${dlHtmlToday} done · ${dlLeft} left`,
+            statusColor: dlLeft === 0 ? 'text-rose-600' : dlLeft <= 2 ? 'text-amber-600' : 'text-emerald-600',
+          },
+          {
             icon: '✍️',
-            label: 'Ultra View',
-            limit: isUltra ? 'Unlimited' : 'Ultra only',
-            used: isUltra ? 'Free always' : 'Upgrade needed',
-            statusColor: isUltra ? 'text-emerald-600' : 'text-rose-600',
+            label: 'HTML Write View',
+            limit: isUltra ? 'Unlimited' : isBasic ? `${basicHtmlLimit}/day` : 'Ultra only',
+            used: isUltra ? 'Free always' : isBasic ? `${htmlSessions} used · ${basicHtmlLeft} left` : 'Upgrade needed',
+            statusColor: isUltra ? 'text-emerald-600' : isBasic ? (basicHtmlLeft === 0 ? 'text-rose-600' : 'text-sky-600') : 'text-rose-600',
           },
           {
             icon: '📖',
@@ -16413,8 +16608,8 @@ RULES:
           {
             icon: '🎬',
             label: 'Video Lectures',
-            limit: isUltra ? 'Unlimited' : isFree ? '2/day' : 'Unlimited',
-            used: isUltra ? 'Free always' : isFree ? 'See content' : 'Free always',
+            limit: isUltra ? `${settings?.videoFreeLimitUltra ?? 10}/day free` : isBasic ? `${settings?.videoFreeLimitBasic ?? 5}/day free` : 'Coins needed',
+            used: isUltra ? 'Phir coins lagenge' : isBasic ? 'Phir coins lagenge' : `${settings?.defaultVideoCost ?? 10} CR each`,
             statusColor: isUltra || isBasic ? 'text-emerald-600' : 'text-amber-600',
           },
           {
@@ -16426,17 +16621,10 @@ RULES:
           },
           {
             icon: '📄',
-            label: 'PDF Download',
-            limit: isUltra ? 'Unlimited' : isFree ? 'Credits needed' : 'Unlimited',
-            used: isUltra ? 'Free always' : isFree ? `${htmlCost} CR each` : 'Free always',
+            label: 'PDF / Notes Access',
+            limit: isUltra ? `${settings?.pdfFreeLimitUltra ?? 10}/day free` : isBasic ? `${settings?.pdfFreeLimitBasic ?? 5}/day free` : 'Coins needed',
+            used: isUltra ? 'Free then coins' : isBasic ? 'Free then coins' : `${settings?.defaultPdfCost ?? 5} CR each`,
             statusColor: isUltra || isBasic ? 'text-emerald-600' : 'text-amber-600',
-          },
-          {
-            icon: '🤖',
-            label: 'AI Hub Chat',
-            limit: isUltra ? 'Unlimited' : isBasic ? '5/day' : 'Not available',
-            used: isUltra ? 'Free always' : isBasic ? 'Basic plan' : 'Upgrade needed',
-            statusColor: isUltra ? 'text-emerald-600' : isBasic ? 'text-sky-600' : 'text-rose-600',
           },
           {
             icon: '🏬',
@@ -16711,6 +16899,184 @@ RULES:
           </div>
         </div>
       )}
+
+      {/* ═══════════ NEW CONTENT NOTIFICATION SHEET ═══════════ */}
+      {showContentNewSheet && (() => {
+        const items = _newContentFiltered;
+        const allIds = items.map(i => i.id);
+        const tierLabel = (t: string) => t === 'ULTRA' ? '⚡ Ultra' : t === 'BASIC' ? '🔵 Basic' : '🆓 Free';
+        const tierColor = (t: string) => t === 'ULTRA' ? 'bg-violet-100 text-violet-700' : t === 'BASIC' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700';
+        const subjectIcon: Record<string, string> = {
+          biology: '🧬', chemistry: '⚗️', physics: '⚛️', economics: '📈',
+          geography: '🌏', polity: '⚖️', history: '📜',
+        };
+
+        const openItem = (item: ContentNotifItem) => {
+          const entry = _allLucentNotes.find(e => e.id === item.entryId);
+          if (!entry) { showAlert('Content nahi mila. Refresh karein.', 'ERROR'); return; }
+          if (item.requiredTier === 'ULTRA' && !_isUltraUser && user.role !== 'ADMIN') {
+            showAlert('यह content Ultra plan mein available hai! Store se upgrade karein. ⚡', 'INFO');
+            return;
+          }
+          if (item.requiredTier === 'BASIC' && !_isBasicUser && !_isUltraUser && user.role !== 'ADMIN') {
+            showAlert('यह content Basic / Ultra plan mein available hai! Store se upgrade karein. 🔵', 'INFO');
+            return;
+          }
+          markContentItemSeen(user.id, item.id);
+          setLucentNoteViewer(entry);
+          setLucentPageListViewer(entry);
+          setLucentPageIndex(item.pageIndex);
+          setShowContentNewSheet(false);
+        };
+
+        return (
+          <div
+            className="fixed inset-0 z-[9999] flex items-end justify-center"
+            style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }}
+            onClick={() => setShowContentNewSheet(false)}
+          >
+            <div
+              className="bg-white rounded-t-3xl w-full max-w-lg max-h-[82vh] flex flex-col animate-in slide-in-from-bottom-10 duration-200"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-100">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🔔</span>
+                    <h2 className="text-base font-black text-slate-800">Naya Content</h2>
+                    {items.length > 0 && (
+                      <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">{items.length} new</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Lucent · Competition — Last 7 days</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {items.length > 0 && (
+                    <button
+                      onClick={() => { markAllContentItemsSeen(user.id, allIds); setShowContentNewSheet(false); }}
+                      className="text-[10px] font-black text-slate-500 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-xl transition-all"
+                    >
+                      Sab dekha ✓
+                    </button>
+                  )}
+                  <button onClick={() => setShowContentNewSheet(false)} className="p-1.5 rounded-full bg-slate-100 text-slate-500">✕</button>
+                </div>
+              </div>
+
+              {/* List */}
+              <div className="overflow-y-auto flex-1 px-4 py-3 space-y-2">
+                {items.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <span className="text-4xl mb-3">📭</span>
+                    <p className="font-black text-slate-700 text-sm">Koi naya content nahi</p>
+                    <p className="text-xs text-slate-400 mt-1">Last 7 din mein koi naya page nahi aaya</p>
+                  </div>
+                ) : items.map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => openItem(item)}
+                    className="w-full text-left flex items-start gap-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-3.5 hover:from-amber-100 hover:to-orange-100 active:scale-[.99] transition-all shadow-sm"
+                  >
+                    {/* Subject icon */}
+                    <div className="w-10 h-10 rounded-xl bg-white border border-amber-200 flex items-center justify-center shrink-0 text-lg shadow-sm">
+                      {subjectIcon[item.subject] || '📖'}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                        <span className="text-[10px] font-black text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">
+                          📚 {item.bookName}
+                        </span>
+                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${tierColor(item.requiredTier)}`}>
+                          {tierLabel(item.requiredTier)}
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-400">{formatContentDate(item.date)}</span>
+                      </div>
+                      <p className="text-sm font-black text-slate-800 truncate">{item.lessonTitle}</p>
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        Page {item.pageNo}
+                        {item.classLevel && item.classLevel !== 'COMPETITION'
+                          ? ` · Class ${item.classLevel}`
+                          : ' · Competition'}
+                      </p>
+                    </div>
+
+                    {/* CTA arrow */}
+                    <div className="shrink-0 self-center">
+                      {(item.requiredTier === 'ULTRA' && !_isUltraUser && user.role !== 'ADMIN') ||
+                       (item.requiredTier === 'BASIC' && !_isBasicUser && !_isUltraUser && user.role !== 'ADMIN') ? (
+                        <span className="text-[10px] font-black text-violet-600 bg-violet-100 px-2 py-1 rounded-lg">Upgrade</span>
+                      ) : (
+                        <span className="text-amber-500">→</span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Footer */}
+              <div className="px-5 pb-4 pt-2 border-t border-slate-50">
+                <p className="text-center text-[10px] text-slate-400">
+                  Subscription ke hisab se content dikhega · {items.length} item{items.length !== 1 ? 's' : ''} available
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ═══════════ LOGIN HISTORY OVERLAY ═══════════ */}
+      {showLoginHistory && (() => {
+        const sessions = getLoginHistory(user.id).slice(0, 20);
+        return (
+          <div className="fixed inset-0 z-[9999] flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }} onClick={() => setShowLoginHistory(false)}>
+            <div className="bg-white rounded-t-3xl w-full max-w-lg max-h-[80vh] flex flex-col animate-in slide-in-from-bottom-10 duration-200" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-100">
+                <div>
+                  <h2 className="text-base font-black text-slate-800">Login History</h2>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Aapki recent login sessions</p>
+                </div>
+                <button onClick={() => setShowLoginHistory(false)} className="p-1.5 rounded-full bg-slate-100 text-slate-500">✕</button>
+              </div>
+              <div className="overflow-y-auto flex-1 px-5 py-3 space-y-2">
+                {sessions.length === 0 ? (
+                  <p className="text-center text-slate-400 text-sm py-8">Koi login history nahi mili</p>
+                ) : sessions.map((s, i) => (
+                  <div key={s.id} className={`rounded-xl p-3 border ${i === 0 ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-100'}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${i === 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'}`}>
+                          {i === 0 ? '🟢 Current' : `#${i + 1}`}
+                        </span>
+                        <div>
+                          <p className="text-xs font-black text-slate-800">{formatLoginTime(s.loginAt)}</p>
+                          {s.logoutAt && (
+                            <p className="text-[10px] text-slate-500">Logout: {formatLoginTime(s.logoutAt)}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        {s.durationSec !== undefined ? (
+                          <span className="text-[11px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                            ⏱ {formatDuration(s.durationSec)}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400">Active</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="px-5 pb-5 pt-2">
+                <p className="text-center text-[10px] text-slate-400">Last {sessions.length} sessions • Local device storage</p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {confirmDialog?.isOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm px-6 animate-in fade-in duration-150">

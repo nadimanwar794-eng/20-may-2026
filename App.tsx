@@ -2435,11 +2435,17 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
     <div className="min-h-[100dvh] flex flex-col bg-white font-sans relative pt-[env(safe-area-inset-top,24px)] pb-[env(safe-area-inset-bottom,0px)]">
-      {/* OFFLINE INDICATOR — non-blocking thin banner. App keeps running on cached data. */}
+      {/* OFFLINE INDICATOR — scrolling marquee ticker, flows above the top bar without covering it */}
       {!isOnline && (
-        <div className="fixed top-0 inset-x-0 z-[9998] bg-amber-500 text-white text-[11px] font-black uppercase tracking-widest py-1.5 px-3 flex items-center justify-center gap-2 shadow-md pointer-events-none animate-in slide-in-from-top">
-          <WifiOff size={12} />
-          <span>Offline mode — saved content available</span>
+        <div className="w-full shrink-0 bg-amber-500 text-white overflow-hidden" style={{ height: '22px', zIndex: 9998 }}>
+          <div className="offline-marquee flex items-center h-full gap-20 whitespace-nowrap" style={{ animation: 'offlineMarquee 14s linear infinite' }}>
+            {[0,1,2,3].map(i => (
+              <span key={i} className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider shrink-0">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.56 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>
+                Offline — Saved content available
+              </span>
+            ))}
+          </div>
         </div>
       )}
       {/* LOGOUT OVERLAY */}

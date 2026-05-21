@@ -4,6 +4,15 @@
     display: none !important;
 }
 
+/* Offline banner scrolling marquee */
+@keyframes offlineMarquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.offline-marquee {
+  will-change: transform;
+}
+
 /* TEACHING STRATEGY STYLES */
 .teacher-guide, .teacher-guide-container {
   max-width: 100%;
