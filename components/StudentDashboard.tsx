@@ -8515,11 +8515,6 @@ export const StudentDashboard: React.FC<Props> = ({
                         <div className="bg-slate-50 rounded-xl p-3 flex items-center justify-between">
                           <div>
                             <p className="text-xs font-black text-slate-700">{user.subscriptionTier || 'Free Plan'}</p>
-                            {user.subscriptionEndDate && user.isPremium && (
-                              <p className="text-[10px] text-slate-500 mt-0.5">
-                                Expires: {new Date(user.subscriptionEndDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                              </p>
-                            )}
                           </div>
                           <button
                             onClick={() => { onTabChange("STORE"); setShowDotsMenu(false); }}
@@ -8657,9 +8652,25 @@ export const StudentDashboard: React.FC<Props> = ({
             )}
             {/* Subscription badge */}
             {user.isPremium && (
-              <span className="w-[72px] text-center text-[7px] font-black py-0.5 rounded-full bg-white/20 text-white border border-white/30 whitespace-nowrap shrink-0">
-                {user.subscriptionLevel === 'ULTRA' ? '👑 ULTRA' : user.subscriptionLevel === 'BASIC' ? '⭐ BASIC' : 'PRO'}
-              </span>
+              <div className="relative w-[72px] h-[18px] shrink-0 overflow-hidden rounded-full cursor-default">
+                {/* Current Badge Content (Tier) */}
+                <span
+                  className="absolute inset-0 flex items-center justify-center text-[7px] font-black bg-white/20 text-white border border-white/30 rounded-full whitespace-nowrap transition-all duration-300"
+                  style={{ animation: user.subscriptionEndDate ? 'badge-toggle-tier 4s infinite' : 'none' }}
+                >
+                  {user.subscriptionLevel === 'ULTRA' ? '👑 ULTRA' : user.subscriptionLevel === 'BASIC' ? '⭐ BASIC' : 'PRO'}
+                </span>
+
+                {/* Expiry Date */}
+                {user.subscriptionEndDate && (
+                  <span
+                    className="absolute inset-0 flex items-center justify-center text-[6.5px] font-bold bg-white/20 text-white border border-white/30 rounded-full whitespace-nowrap transition-all duration-300 opacity-0"
+                    style={{ animation: 'badge-toggle-expiry 4s infinite' }}
+                  >
+                    Exp: {new Date(user.subscriptionEndDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })}
+                  </span>
+                )}
+              </div>
             )}
           </div>
         </div>
