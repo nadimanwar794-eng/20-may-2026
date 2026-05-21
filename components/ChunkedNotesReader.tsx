@@ -450,7 +450,6 @@ export const ChunkedNotesReader: React.FC<Props> = ({ content, className, langua
   // When preferChunkMode=true, HTML content defaults to tappable chunk reader.
   // User can still toggle to styled HTML view via a button.
   const [htmlViewMode, setHtmlViewMode] = useState<'chunk' | 'html'>(() => preferChunkMode ? 'chunk' : 'html');
-  const [htmlUnlocked, setHtmlUnlocked] = useState(false);
   const [showHtmlUnlockPrompt, setShowHtmlUnlockPrompt] = useState(false);
   // Compute chunk topics from the stripped plain text (for HTML content in chunk mode)
   const htmlChunkTopics = useMemo(() => {
@@ -1089,60 +1088,38 @@ export const ChunkedNotesReader: React.FC<Props> = ({ content, className, langua
                 {isReading ? <><Square size={13} /> Stop</> : initialIndex ? <><Volume2 size={13} /> Continue</> : <><Volume2 size={13} /> Read All</>}
               </button>
 
-              {/* HTML View toggle — visible when content is HTML OR a separate htmlContent prop is provided */}
+              {/* Ultra View button — Ultra plan only, no credits */}
               {hasHtmlToShow && (
-                (isUltraUser === false && !htmlUnlocked) ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setShowHtmlUnlockPrompt(true)}
-                      className="shrink-0 flex items-center gap-1 px-2 py-1.5 rounded-lg bg-amber-50 text-amber-600 border border-amber-200 text-[10px] font-black active:scale-95 transition"
-                      title={`Unlock HTML view for ${htmlUnlockCost} credits`}
-                    >
-                      🔒 HTML
-                    </button>
-                    {/* Inline unlock prompt */}
-                    {showHtmlUnlockPrompt && (
-                      <div className="fixed inset-0 z-[9999] flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }} onClick={() => setShowHtmlUnlockPrompt(false)}>
-                        <div className="bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl" onClick={e => e.stopPropagation()}>
-                          <p className="text-2xl text-center mb-2">✍️</p>
-                          <h3 className="font-black text-slate-800 text-center text-base mb-1">Write Mode Unlock</h3>
-                          <p className="text-xs text-slate-500 text-center mb-4">Spend <span className="font-black text-amber-600">{htmlUnlockCost} Credits</span> to unlock the HTML styled view for this session.</p>
-                          <p className="text-[10px] text-slate-400 text-center mb-4">Your balance: <span className="font-black text-slate-600">{userCredits} CR</span></p>
-                          {userCredits >= htmlUnlockCost ? (
-                            <button
-                              onClick={() => {
-                                onSpendCredits?.(htmlUnlockCost);
-                                setHtmlUnlocked(true);
-                                setShowHtmlUnlockPrompt(false);
-                                stopAll();
-                                setHtmlViewMode('html');
-                                onHtmlOpen?.();
-                              }}
-                              className="w-full py-3 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-2xl font-black text-sm active:scale-95 transition mb-2"
-                            >
-                              Unlock — {htmlUnlockCost} CR
-                            </button>
-                          ) : (
-                            <div className="w-full py-3 bg-slate-100 text-slate-400 rounded-2xl font-black text-sm text-center mb-2">
-                              Not enough credits
-                            </div>
-                          )}
-                          <button onClick={() => setShowHtmlUnlockPrompt(false)} className="w-full py-2.5 bg-slate-100 text-slate-500 rounded-2xl font-bold text-xs active:scale-95 transition">Cancel</button>
-                          <p className="text-[9px] text-slate-300 text-center mt-3">Ultra plan lene par unlimited HTML access milega.</p>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
+                isUltraUser ? (
                   <button
                     type="button"
                     onClick={() => { stopAll(); setHtmlViewMode('html'); onHtmlOpen?.(); }}
                     className="shrink-0 flex items-center gap-1 px-2 py-1.5 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-600 border border-violet-200 text-[10px] font-black active:scale-95 transition"
-                    title="Styled HTML view mein dekho"
+                    title="Ultra View — styled HTML notes"
                   >
-                    HTML
+                    ⚡ Ultra
                   </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowHtmlUnlockPrompt(true)}
+                      className="shrink-0 flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-100 text-slate-400 border border-slate-200 text-[10px] font-black active:scale-95 transition"
+                      title="Ultra plan required"
+                    >
+                      🔒 Ultra
+                    </button>
+                    {showHtmlUnlockPrompt && (
+                      <div className="fixed inset-0 z-[9999] flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }} onClick={() => setShowHtmlUnlockPrompt(false)}>
+                        <div className="bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl" onClick={e => e.stopPropagation()}>
+                          <p className="text-3xl text-center mb-2">⚡</p>
+                          <h3 className="font-black text-slate-800 text-center text-base mb-1">Ultra Plan Required</h3>
+                          <p className="text-xs text-slate-500 text-center mb-5">Ye feature sirf Ultra subscribers ke liye hai. Upgrade karke styled HTML notes ka full experience lo.</p>
+                          <button onClick={() => setShowHtmlUnlockPrompt(false)} className="w-full py-2.5 bg-violet-600 text-white rounded-2xl font-black text-sm active:scale-95 transition">OK, Samajh Gaya</button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )
               )}
             </div>

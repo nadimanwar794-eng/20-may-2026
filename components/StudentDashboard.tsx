@@ -617,13 +617,12 @@ export const StudentDashboard: React.FC<Props> = ({
     }
   }, [user.isPremium, user.subscriptionEndDate]);
 
-  // --- STORE VISIT → MAILBOX DISCOUNT DELIVERY (multi-tier escalation) ---
-  // 1st visit  →  10% (storeVisitDiscountPercent, default 10)
-  // 3rd visit  →  15%
-  // 5th+ visit →  20% (max)
-  // NOTE: uses userRef.current (defined later in the component) to avoid stale closure
-  // overwriting inbox. Effect callbacks are closures that execute AFTER the full
-  // component function runs, so userRef is already initialized by then.
+  // --- STORE VISIT → MAILBOX DISCOUNT DELIVERY (login-streak based) ---
+  // Discount tier depends on user's LOGIN STREAK (number of consecutive login days):
+  //   streak >= 5  → 20% off
+  //   streak >= 3  → 15% off
+  //   streak >= 1  → 10% off (default / first login)
+  // One coupon per day max. Coupon is a valid REDEEM_CODE stored in user inbox.
   useEffect(() => {
     if (activeTab !== 'STORE') return;
     const freshUser = (window as any).__dashUserRef?.current ?? user;
@@ -632,17 +631,20 @@ export const StudentDashboard: React.FC<Props> = ({
     if (!freshUser?.id) return;
     const today = new Date().toISOString().split('T')[0];
 
-    // Increment visit count for today
-    const visitCountKey = `nst_store_visits_${freshUser.id}_${today}`;
-    const visitCount = parseInt(localStorage.getItem(visitCountKey) || '0', 10) + 1;
-    localStorage.setItem(visitCountKey, String(visitCount));
+    // Determine discount % based on login streak
+    const streak = freshUser.streak || 0;
+    const discountPct = streak >= 5
+      ? 20
+      : streak >= 3
+        ? 15
+        : (settings?.storeVisitDiscountPercent ?? 10);
+    const tierKey = streak >= 5 ? '5plus' : streak >= 3 ? '3plus' : '1';
 
-    // Helper: send one discount mail if not already sent at this tier today
+    // Helper: send discount coupon once per day per tier
     const sendDiscount = (pct: number, tier: string) => {
       const sentKey = `nst_store_disc${tier}_${freshUser.id}_${today}`;
       if (localStorage.getItem(sentKey)) return;
       const msgId = `store-disc-${tier}-${today}`;
-      // Re-fetch freshest user to avoid inbox race
       const latestUser = (window as any).__dashUserRef?.current ?? freshUser;
       const alreadyHas = (latestUser.inbox || []).some((m: any) => m.id === msgId);
       if (alreadyHas) return;
@@ -650,11 +652,12 @@ export const StudentDashboard: React.FC<Props> = ({
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       const discMsg: any = {
         id: msgId,
-        text: `🎁 Special Discount!\n\n⬆️ Upgrade your plan to unlock full power!\n\n🏷️ You got ${pct}% off — redeem now!`,
+        text: `🎁 Store Discount — ${pct}% OFF!\n\n⬆️ Upgrade your plan and save today!\n\n🏷️ Your ${pct}% discount code:\n${code}\n\n⏰ Valid for 24 hours. Redeem in Store.`,
         date: new Date().toISOString(),
         read: false,
         type: 'REDEEM_CODE',
         redeemCode: code,
+        discountPercent: pct,
         expiresAt,
       };
       const updatedInbox = [discMsg, ...(latestUser.inbox || [])];
@@ -662,9 +665,7 @@ export const StudentDashboard: React.FC<Props> = ({
       localStorage.setItem(sentKey, '1');
     };
 
-    if (visitCount === 1) sendDiscount(settings?.storeVisitDiscountPercent ?? 10, '1');
-    if (visitCount === 3) sendDiscount(15, '3');
-    if (visitCount >= 5) sendDiscount(20, '5');
+    sendDiscount(discountPct, tierKey);
   }, [activeTab, user?.id]);
 
   // --- MCQ DAILY TRACKING HELPER ---
@@ -1219,6 +1220,7 @@ export const StudentDashboard: React.FC<Props> = ({
     setTimeout(() => setRewardEffect(null), 2400);
   };
   const [showDotsMenu, setShowDotsMenu] = useState(false);
+  const [showFeatureLimitsModal, setShowFeatureLimitsModal] = useState(false);
   const [showRulesPage, setShowRulesPage] = useState(false);
   const [showCreditsMini, setShowCreditsMini] = useState(false);
   const [storeSubTab, setStoreSubTab] = useState<'STORE' | 'EARN'>('STORE');
@@ -7608,78 +7610,65 @@ export const StudentDashboard: React.FC<Props> = ({
               </div>
             </div>
 
-            {/* FEATURE LIMITS CARD */}
+            {/* DAILY USAGE CARD */}
             {(() => {
               const isUltra = user.isPremium && user.subscriptionLevel === 'ULTRA';
               const isBasic = user.isPremium && user.subscriptionLevel === 'BASIC';
-              const htmlCost = settings?.htmlUnlockCost ?? 5;
-              const basicLimit = settings?.basicHtmlDailyLimit ?? 3;
               const todayStr = new Date().toISOString().split('T')[0];
-              const basicUsed = isBasic
-                ? parseInt(localStorage.getItem(`nst_basic_html_${user.id}_${todayStr}`) || '0', 10)
-                : 0;
-              const basicLeft = Math.max(0, basicLimit - basicUsed);
-
-              type Row = { icon: string; label: string; value: string; pill: 'green' | 'blue' | 'red' | 'amber' };
-              const rows: Row[] = [
-                {
-                  icon: '📝',
-                  label: 'Notes / PDF / Video / Audio / MCQ',
-                  value: isUltra ? 'Unlimited' : 'Ultra only',
-                  pill: isUltra ? 'green' : 'red',
-                },
-                {
-                  icon: '✍️',
-                  label: 'Write Mode (HTML View)',
-                  value: isUltra
-                    ? 'Unlimited'
-                    : isBasic
-                      ? `${basicLeft} / ${basicLimit} free today`
-                      : `${htmlCost} CR per session`,
-                  pill: isUltra ? 'green' : isBasic ? (basicLeft > 0 ? 'blue' : 'amber') : 'amber',
-                },
-                {
-                  icon: '💰',
-                  label: 'Credits Balance',
-                  value: `${user.credits || 0} CR`,
-                  pill: (user.credits || 0) >= 20 ? 'green' : (user.credits || 0) > 0 ? 'amber' : 'red',
-                },
-              ];
-
-              const pillStyle: Record<Row['pill'], string> = {
-                green: 'bg-emerald-100 text-emerald-700',
-                blue:  'bg-sky-100 text-sky-700',
-                amber: 'bg-amber-100 text-amber-700',
-                red:   'bg-rose-100 text-rose-600',
-              };
-
+              const mcqToday = parseInt(localStorage.getItem(`nst_mcq_daily_total_${todayStr}_${user.id}`) || '0', 10);
+              const storeVisits = parseInt(localStorage.getItem(`nst_store_visits_${user.id}_${todayStr}`) || '0', 10);
+              const htmlSessions = parseInt(localStorage.getItem(`nst_basic_html_${user.id}_${todayStr}`) || '0', 10);
+              const tierLabel = isUltra ? 'Ultra ⚡' : isBasic ? 'Basic 🔵' : 'Free 🆓';
+              const tierColor = isUltra ? 'from-violet-500 to-purple-600' : isBasic ? 'from-sky-500 to-blue-600' : 'from-slate-400 to-slate-500';
               return (
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="px-4 pt-3 pb-1 flex items-center gap-2">
-                    <span className="text-base">🔑</span>
-                    <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Your Feature Limits</p>
+                  <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">📊</span>
+                      <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Daily Usage</p>
+                    </div>
+                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full text-white bg-gradient-to-r ${tierColor}`}>{tierLabel}</span>
                   </div>
                   <div className="divide-y divide-slate-100">
-                    {rows.map((r, i) => (
-                      <div key={i} className="px-4 py-3 flex items-center gap-3">
-                        <span className="text-lg shrink-0">{r.icon}</span>
-                        <p className="flex-1 text-[11px] font-bold text-slate-600 leading-tight">{r.label}</p>
-                        <span className={`shrink-0 text-[10px] font-black px-2 py-0.5 rounded-full ${pillStyle[r.pill]}`}>
-                          {r.value}
-                        </span>
-                      </div>
-                    ))}
+                    <div className="px-4 py-2.5 flex items-center gap-3">
+                      <span className="text-base shrink-0">📝</span>
+                      <p className="flex-1 text-[11px] font-bold text-slate-600">MCQ Practiced</p>
+                      <span className="text-[10px] font-black text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full">{mcqToday} done</span>
+                    </div>
+                    <div className="px-4 py-2.5 flex items-center gap-3">
+                      <span className="text-base shrink-0">✍️</span>
+                      <p className="flex-1 text-[11px] font-bold text-slate-600">Write Mode</p>
+                      <span className="text-[10px] font-black text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full">
+                        {isUltra ? '∞ Free' : isBasic ? `${htmlSessions} used` : `${settings?.htmlUnlockCost ?? 5} CR/session`}
+                      </span>
+                    </div>
+                    <div className="px-4 py-2.5 flex items-center gap-3">
+                      <span className="text-base shrink-0">🏬</span>
+                      <p className="flex-1 text-[11px] font-bold text-slate-600">Store Visits</p>
+                      <span className="text-[10px] font-black text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full">{storeVisits} today</span>
+                    </div>
+                    <div className="px-4 py-2.5 flex items-center gap-3">
+                      <span className="text-base shrink-0">💰</span>
+                      <p className="flex-1 text-[11px] font-bold text-slate-600">Credits Balance</p>
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${(user.credits||0)>=20?'bg-emerald-100 text-emerald-700':(user.credits||0)>0?'bg-amber-100 text-amber-700':'bg-rose-100 text-rose-600'}`}>{user.credits||0} CR</span>
+                    </div>
                   </div>
-                  {!isUltra && (
-                    <div className="px-4 pb-3 pt-1">
+                  <div className="px-4 py-3 flex gap-2">
+                    <button
+                      onClick={() => setShowFeatureLimitsModal(true)}
+                      className="flex-1 py-2 rounded-xl bg-gradient-to-r from-slate-100 to-slate-200 text-slate-600 text-[10px] font-black active:scale-95 transition border border-slate-200"
+                    >
+                      🔑 View All Limits
+                    </button>
+                    {!isUltra && (
                       <button
                         onClick={() => onTabChange('STORE')}
-                        className="w-full py-2 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white text-xs font-black active:scale-95 transition"
+                        className="flex-1 py-2 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white text-[10px] font-black active:scale-95 transition"
                       >
-                        Upgrade to Ultra — Unlock Everything
+                        ⚡ Upgrade
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               );
             })()}
@@ -8473,8 +8462,19 @@ export const StudentDashboard: React.FC<Props> = ({
                           </button>
                         </div>
                       </div>
+                      {/* Feature Limits & Daily Usage */}
+                      <div className="px-4 pt-2 pb-2">
+                        <button
+                          onClick={() => { setShowFeatureLimitsModal(true); setShowDotsMenu(false); }}
+                          className="w-full flex items-center gap-2 p-2.5 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 text-emerald-700 hover:from-emerald-100 hover:to-teal-100 font-bold text-xs transition-all"
+                        >
+                          <span className="text-base">📊</span>
+                          <span className="flex-1 text-left">Daily Limits & Usage</span>
+                          <span className="text-[10px] text-emerald-400">→</span>
+                        </button>
+                      </div>
                       {/* Rules Page Link */}
-                      <div className="px-4 pt-3 pb-4">
+                      <div className="px-4 pt-0 pb-4">
                         <button
                           onClick={() => { setShowRulesPage(true); setShowDotsMenu(false); }}
                           className="w-full flex items-center gap-2 p-2.5 rounded-xl bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200 text-violet-700 hover:from-violet-100 hover:to-indigo-100 font-bold text-xs transition-all"
@@ -16367,6 +16367,136 @@ RULES:
         </button>
       )}
 
+      {/* ═══════════ FEATURE LIMITS & DAILY USAGE MODAL ═══════════ */}
+      {showFeatureLimitsModal && (() => {
+        const isUltra = user.isPremium && user.subscriptionLevel === 'ULTRA';
+        const isBasic = user.isPremium && user.subscriptionLevel === 'BASIC';
+        const isFree = !user.isPremium;
+        const tierLabel = isUltra ? 'Ultra ⚡' : isBasic ? 'Basic 🔵' : 'Free 🆓';
+        const tierColor = isUltra ? 'from-violet-500 to-purple-600' : isBasic ? 'from-sky-500 to-blue-600' : 'from-slate-400 to-slate-500';
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        const mcqToday = parseInt(localStorage.getItem(`nst_mcq_daily_total_${todayStr}_${user.id}`) || '0', 10);
+        const htmlSessions = parseInt(localStorage.getItem(`nst_basic_html_${user.id}_${todayStr}`) || '0', 10);
+        const storeVisits = parseInt(localStorage.getItem(`nst_store_visits_${user.id}_${todayStr}`) || '0', 10);
+
+        const htmlCost = settings?.htmlUnlockCost ?? 5;
+        const basicHtmlLimit = settings?.basicHtmlDailyLimit ?? 3;
+        const basicHtmlLeft = Math.max(0, basicHtmlLimit - htmlSessions);
+
+        const mcqLimit = isUltra ? null : isBasic ? null : 50;
+        const mcqLeft = mcqLimit !== null ? Math.max(0, mcqLimit - mcqToday) : null;
+
+        type LimitRow = { icon: string; label: string; limit: string; used: string; statusColor: string };
+        const rows: LimitRow[] = [
+          {
+            icon: '📝',
+            label: 'MCQ Practice',
+            limit: mcqLimit !== null ? `${mcqLimit}/day` : 'Unlimited',
+            used: `${mcqToday} done${mcqLeft !== null ? ` · ${mcqLeft} left` : ''}`,
+            statusColor: mcqLeft === 0 ? 'text-rose-600' : mcqLeft !== null && mcqLeft <= 10 ? 'text-amber-600' : 'text-emerald-600',
+          },
+          {
+            icon: '✍️',
+            label: 'Ultra View',
+            limit: isUltra ? 'Unlimited' : 'Ultra only',
+            used: isUltra ? 'Free always' : 'Upgrade needed',
+            statusColor: isUltra ? 'text-emerald-600' : 'text-rose-600',
+          },
+          {
+            icon: '📖',
+            label: 'Notes Reading',
+            limit: 'Unlimited',
+            used: 'No daily cap',
+            statusColor: 'text-emerald-600',
+          },
+          {
+            icon: '🎬',
+            label: 'Video Lectures',
+            limit: isUltra ? 'Unlimited' : isFree ? '2/day' : 'Unlimited',
+            used: isUltra ? 'Free always' : isFree ? 'See content' : 'Free always',
+            statusColor: isUltra || isBasic ? 'text-emerald-600' : 'text-amber-600',
+          },
+          {
+            icon: '🔊',
+            label: 'Audio / TTS',
+            limit: 'Unlimited',
+            used: 'No daily cap',
+            statusColor: 'text-emerald-600',
+          },
+          {
+            icon: '📄',
+            label: 'PDF Download',
+            limit: isUltra ? 'Unlimited' : isFree ? 'Credits needed' : 'Unlimited',
+            used: isUltra ? 'Free always' : isFree ? `${htmlCost} CR each` : 'Free always',
+            statusColor: isUltra || isBasic ? 'text-emerald-600' : 'text-amber-600',
+          },
+          {
+            icon: '🤖',
+            label: 'AI Hub Chat',
+            limit: isUltra ? 'Unlimited' : isBasic ? '5/day' : 'Not available',
+            used: isUltra ? 'Free always' : isBasic ? 'Basic plan' : 'Upgrade needed',
+            statusColor: isUltra ? 'text-emerald-600' : isBasic ? 'text-sky-600' : 'text-rose-600',
+          },
+          {
+            icon: '🏬',
+            label: 'Store Visits Today',
+            limit: 'Unlimited',
+            used: `${storeVisits} visits`,
+            statusColor: 'text-slate-600',
+          },
+          {
+            icon: '💰',
+            label: 'Credits Balance',
+            limit: 'Earn daily',
+            used: `${user.credits || 0} CR available`,
+            statusColor: (user.credits||0) >= 20 ? 'text-emerald-600' : (user.credits||0) > 0 ? 'text-amber-600' : 'text-rose-600',
+          },
+        ];
+
+        return (
+          <div className="fixed inset-0 z-[9999] flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }} onClick={() => setShowFeatureLimitsModal(false)}>
+            <div className="bg-white rounded-t-3xl w-full max-w-lg max-h-[85vh] flex flex-col animate-in slide-in-from-bottom-10 duration-200" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-100">
+                <div>
+                  <h2 className="text-base font-black text-slate-800">Daily Limits & Usage</h2>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Aaj ka usage aur aapki plan ki limits</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-black px-3 py-1 rounded-full text-white bg-gradient-to-r ${tierColor}`}>{tierLabel}</span>
+                  <button onClick={() => setShowFeatureLimitsModal(false)} className="p-1.5 rounded-full bg-slate-100 text-slate-500">✕</button>
+                </div>
+              </div>
+              {/* Rows */}
+              <div className="overflow-y-auto flex-1 divide-y divide-slate-100 pb-2">
+                {rows.map((row, i) => (
+                  <div key={i} className="px-5 py-3 flex items-center gap-3">
+                    <span className="text-xl shrink-0">{row.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-black text-slate-700 leading-tight">{row.label}</p>
+                      <p className={`text-[10px] font-bold mt-0.5 ${row.statusColor}`}>{row.used}</p>
+                    </div>
+                    <span className="shrink-0 text-[9px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full whitespace-nowrap">{row.limit}</span>
+                  </div>
+                ))}
+              </div>
+              {/* Footer */}
+              {!isUltra && (
+                <div className="px-5 py-4 border-t border-slate-100">
+                  <button
+                    onClick={() => { setShowFeatureLimitsModal(false); onTabChange('STORE'); }}
+                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-black text-sm active:scale-95 transition"
+                  >
+                    ⚡ Upgrade Plan — Unlock Everything
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* CUSTOM CONFIRM DIALOG */}
       {/* ═══════════ RULES PAGE MODAL ═══════════ */}
       {showRulesPage && (
@@ -16405,26 +16535,26 @@ RULES:
               <div className="bg-teal-50 px-4 py-2.5 flex items-center gap-2">
                 <span className="text-lg">✏️</span>
                 <div>
-                  <p className="font-black text-sm text-slate-800">Write Mode (HTML Notes)</p>
-                  <p className="text-[10px] text-slate-500">Notes ka full rendered view — Deep Dive mein</p>
+                  <p className="font-black text-sm text-slate-800">Ultra View</p>
+                  <p className="text-[10px] text-slate-500">Styled HTML notes — sirf Ultra users ke liye</p>
                 </div>
               </div>
               <div className="grid grid-cols-3 divide-x divide-slate-100">
                 <div className="p-3 text-center">
-                  <p className="text-xs font-black text-red-500">{settings?.writeModeCreditFree ?? 5} coins</p>
-                  <p className="text-[9px] text-slate-400 mt-1">Har baar</p>
+                  <p className="text-xs font-black text-slate-400">🔒 Locked</p>
+                  <p className="text-[9px] text-slate-400 mt-1">Nahi milega</p>
                 </div>
                 <div className="p-3 text-center">
-                  <p className="text-xs font-black text-green-600">{settings?.writeModeFreeLimitBasic ?? 5} free/day</p>
-                  <p className="text-[9px] text-slate-400 mt-1">Phir {settings?.writeModeCreditPaid ?? 10} coins</p>
+                  <p className="text-xs font-black text-slate-400">🔒 Locked</p>
+                  <p className="text-[9px] text-slate-400 mt-1">Nahi milega</p>
                 </div>
                 <div className="p-3 text-center">
-                  <p className="text-xs font-black text-violet-600">{settings?.writeModeFreeLimitUltra ?? 10} free/day</p>
-                  <p className="text-[9px] text-slate-400 mt-1">Phir {settings?.writeModeCreditPaid ?? 10} coins</p>
+                  <p className="text-xs font-black text-violet-600">✅ Free</p>
+                  <p className="text-[9px] text-slate-400 mt-1">Unlimited</p>
                 </div>
               </div>
               <div className="px-4 pb-2.5">
-                <p className="text-[9px] text-slate-400">📌 {settings?.writeModeMaxLimit ?? 20}+ uses/day hone ke baad sabke liye 20 coins per use</p>
+                <p className="text-[9px] text-slate-400">⚡ Ultra plan exclusive — styled HTML notes ka full experience</p>
               </div>
             </div>
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Chapter, User, Subject, SystemSettings, MCQResult, PerformanceTag } from '../types';
 import { CheckCircle, Lock, ArrowLeft, Crown, PlayCircle, HelpCircle, Trophy, Clock, BrainCircuit, FileText, Layers, BookOpen, Eye, RefreshCw, ChevronDown, ChevronUp, Send } from 'lucide-react';
 import { checkFeatureAccess } from '../utils/permissionUtils';
@@ -160,6 +160,10 @@ export const McqView: React.FC<Props> = ({
   const [listMode, setListMode] = useState<'mcq' | 'qa'>('mcq');
   const [listAnswers, setListAnswers] = useState<Record<number, number>>({});
   const [listRevealed, setListRevealed] = useState<Record<number, boolean>>({});
+  const [listSubmitted, setListSubmitted] = useState(false);
+  const [listTimerSeconds, setListTimerSeconds] = useState(0);
+  const [listStarted, setListStarted] = useState(false);
+  const listTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const TTS_SPEEDS_MCQ = [1.0, 1.25, 1.5, 2.0, 0.75];
   const [ttsRate, setTtsRate] = useState<number>(() => getStoredTtsSpeed());
   const cycleTtsRate = () => {
@@ -203,6 +207,18 @@ export const McqView: React.FC<Props> = ({
 
   // NEW: MCQ Mode State (Free vs Premium Experience)
   const [mcqMode, setMcqMode] = useState<'FREE' | 'PREMIUM'>('FREE');
+
+  // Timer for Ultra users in INTERACTIVE_LIST MCQ mode — starts on first answer
+  useEffect(() => {
+      const isUltra = user.isPremium && user.subscriptionLevel === 'ULTRA';
+      if (viewMode !== 'INTERACTIVE_LIST' || listMode !== 'mcq' || !listStarted || listSubmitted || !isUltra) {
+          if (listTimerRef.current) { clearInterval(listTimerRef.current); listTimerRef.current = null; }
+          return;
+      }
+      listTimerRef.current = setInterval(() => setListTimerSeconds(s => s + 1), 1000);
+      return () => { if (listTimerRef.current) { clearInterval(listTimerRef.current); listTimerRef.current = null; } };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, listMode, listStarted, listSubmitted]);
 
   // Load topics on mount if content exists locally or via minimal fetch.
   // Uses the same resilient/normalized lookup so topic chips show up even when
@@ -260,6 +276,10 @@ export const McqView: React.FC<Props> = ({
       setListMode(initialMode);
       setListAnswers({});
       setListRevealed({});
+      setListSubmitted(false);
+      setListTimerSeconds(0);
+      setListStarted(false);
+      if (listTimerRef.current) { clearInterval(listTimerRef.current); listTimerRef.current = null; }
       setViewMode('INTERACTIVE_LIST');
       setLoading(false);
   };

@@ -1391,8 +1391,11 @@ const App: React.FC = () => {
        performLogout();
        return;
     }
+    const isPremiumActive = state.user.isPremium && state.user.subscriptionEndDate && new Date(state.user.subscriptionEndDate) > new Date();
+    const subLevel = state.user.subscriptionLevel;
+    const logoutSecs = isPremiumActive ? (subLevel === 'ULTRA' ? 1 : 3) : 5;
     setLogoutPending(true);
-    setLogoutTimeLeft(3);
+    setLogoutTimeLeft(logoutSecs);
   };
 
   const handleMCQComplete = (score: number, answers: Record<number, number>, displayData: MCQItem[], timeTaken: number) => {

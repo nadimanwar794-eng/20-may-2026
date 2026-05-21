@@ -47,9 +47,28 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
         }
 
         if (!targetCode) {
-            setStatus('ERROR');
-            setMsg('Invalid Code. Please check and try again.');
-            return;
+            // Check user's inbox for auto-generated REDEEM_CODE messages (store-visit discounts)
+            const inboxCode = (user.inbox || []).find((m: any) =>
+                m.type === 'REDEEM_CODE' &&
+                m.redeemCode === cleanCode &&
+                (!m.expiresAt || new Date(m.expiresAt) > new Date()) &&
+                !m.isClaimed
+            );
+            if (inboxCode) {
+                targetCode = {
+                    type: 'DISCOUNT',
+                    discountPercent: inboxCode.discountPercent || 10,
+                    code: cleanCode,
+                    maxUses: 1,
+                    usedCount: 0,
+                    redeemedBy: []
+                };
+                source = 'INBOX';
+            } else {
+                setStatus('ERROR');
+                setMsg('Invalid Code. Please check and try again.');
+                return;
+            }
         }
         
         // CHECK IF REDEEMED / EXHAUSTED
@@ -234,6 +253,16 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
             const amount = targetCode.amount || 0;
             updatedUser.credits = (updatedUser.credits || 0) + amount;
             successMessage = `Success! Added ${amount} Premium Notes.`;
+        }
+
+        // If code came from inbox (auto-generated store-visit discount), mark it as claimed
+        if (source === 'INBOX') {
+            const updatedInbox = (updatedUser.inbox || []).map((m: any) =>
+                m.type === 'REDEEM_CODE' && m.redeemCode === cleanCode
+                    ? { ...m, isClaimed: true, read: true }
+                    : m
+            );
+            updatedUser = { ...updatedUser, inbox: updatedInbox };
         }
         
         // Save User immediately to local storage first (always succeeds)
